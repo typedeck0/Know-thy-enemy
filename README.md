@@ -4,7 +4,7 @@ Counts the amount and type of player enemies in an arcdps fight instance.
 ## Build
 using ImGui 1.8
 
-msvc
+msvc:
 ```
 cl /LD /EHsc /O2 know_thy_enemy.cpp imgui.lib
 ```

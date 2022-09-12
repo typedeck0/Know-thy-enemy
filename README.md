@@ -2,7 +2,7 @@
 Counts the amount and type of player enemies in an arcdps fight instance.
 
 ## Build
-using ImGui 1.8
+targeting ImGui 1.8
 
 msvc x64:
 ```

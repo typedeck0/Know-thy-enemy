@@ -6,7 +6,7 @@ Counts the amount and type of player enemies in an arcdps fight instance.
 ![image](https://user-images.githubusercontent.com/113395677/189776559-de7d1981-8bff-4dd7-8f07-3062b602bf29.png)
 
 ## Build
-targeting ImGui 1.8
+targeting [ImGui](https://github.com/ocornut/imgui/tree/v1.80) 1.8
 
 msvc x64:
 ```

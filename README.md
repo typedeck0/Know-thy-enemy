@@ -25,3 +25,9 @@ in the Interface tab under Windows should be an option to enable the extension
 
 ## Use:
 Right click the window to toggle between a history of fights and the current instance
+
+## Comments concerns and/or proclamations
+
+hmu in discord typedeck#7119
+
+or in-game at woodel.6318

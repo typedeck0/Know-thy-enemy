@@ -245,7 +245,7 @@ void record_agent(ag* agent, uint16_t instid)
 	}
 	return;
 }
-bool enabled = false;
+bool enabled = true;
 /* combat callback -- may be called asynchronously, use id param to keep track of order, first event id will be 2. return ignored */
 /* at least one participant will be party/squad or minion of, or a buff applied by squad in the case of buff remove. not all statechanges present, see evtc statechange enum */
 uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t id, uint64_t revision) 

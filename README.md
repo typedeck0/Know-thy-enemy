@@ -1,5 +1,5 @@
 # Know-thy-enemy
-[![](https://img.shields.io/github/downloads/typedeck0/Know-thy-enemy/total)](../../releases)
+[![](https://img.shields.io/github/downloads/typedeck0/know-thy-enemy/total?style=plastic)](../../releases)
 
 Counts the amount and type of player enemies (that your squad hits or is hit by) in an arcdps fight instance (resets when arcdps does).
 

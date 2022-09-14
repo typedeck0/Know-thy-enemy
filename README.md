@@ -30,6 +30,8 @@ Right click the window to toggle between a history of fights and the current ins
 
 ## Comments concerns and/or proclamations
 
+post an [issue](../../issues)
+
 hmu in discord typedeck#7119
 
 or in-game at woodel.6318

@@ -18,7 +18,7 @@ cl /LD /EHsc /O2 know_thy_enemy.cpp imgui.lib
 ## Install:
 make sure you have [arcdps](https://www.deltaconnected.com/arcdps/)
 
-move the know_thy_enemy.dll([releases](../../releases)) to the bin64 folder (its in the same folder as your gw2 exe)
+move the know_thy_enemy.dll([releases](../../releases)) to the folder where the gw2 exe is or the bin64 folder (its in the same folder as your gw2 exe)
 
 then in-game open the arcdps options window (alt-shift-t)
 

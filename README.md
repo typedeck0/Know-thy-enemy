@@ -1,6 +1,8 @@
 # Know-thy-enemy
 [![](https://img.shields.io/github/downloads/typedeck0/know-thy-enemy/total?style=plastic)](../../releases)
 
+Tired of commanders saying "They're twice our size!", Well now you can put a number on it!
+
 Counts the amount and type of player enemies (that your squad hits or is hit by) in an arcdps fight instance (resets when arcdps does).
 
 ![image](https://user-images.githubusercontent.com/113395677/189776525-a1103ead-7313-458a-83de-9befa86c714b.png)

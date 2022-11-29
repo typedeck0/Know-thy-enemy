@@ -30,7 +30,7 @@ in the Interface tab under Windows should be an option to enable the extension
 ## Use:
 Right click the window to toggle between a history of fights and the current instance
 
-## Comments concerns and/or proclamations
+## Comments, concerns, and/or proclamations
 
 post an [issue](../../issues)
 

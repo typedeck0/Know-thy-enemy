@@ -370,7 +370,7 @@ uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or
 		ImGui::Begin("Know thy enemy", &enabled);
 		ImGui::PushStyleColor(ImGuiCol_Text, color_array[0][4]);
 		char buff[32] = {};
-		snprintf(buff, 32, "%04x Total: %d", (uint16_t)combatants_to_display, sum);
+		snprintf(buff, 32, "Total: %d", sum);
 		ImGui::ProgressBar(1, ImVec2(-1, 0), buff);
 
 		for (std::pair<uint32_t, uint16_t> pair : pairs)
@@ -384,6 +384,7 @@ uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or
 
 		if( ImGui::BeginPopupContextWindow(NULL, 1))
 		{
+			std::lock_guard<std::mutex>lock(mtx);
 			char cbuffer[16] = {};
 			snprintf(cbuffer, 16, " Current ");
 			if (ImGui::Button(cbuffer))

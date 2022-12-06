@@ -344,12 +344,15 @@ char* get_name(uint32_t id)
 	}
 }
 
+std::vector<std::string> strings = std::vector<std::string>();
+
 uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or_ooc)
 {
 	// for (std::string* sptr : to_delete)
 	// 	delete sptr;
 	if (not_charsel_or_loading && enabled)
 	{
+		strings.clear();
 		uint32_t sum = 0;
 		std::vector<std::pair<uint32_t, uint16_t>> pairs = std::vector<std::pair<uint32_t, uint16_t>>();
 		{
@@ -369,15 +372,15 @@ uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or
 
 		ImGui::Begin("Know thy enemy", &enabled);
 		ImGui::PushStyleColor(ImGuiCol_Text, color_array[0][4]);
-		char buff[32] = {};
-		snprintf(buff, 32, "Total: %d", sum);
-		ImGui::ProgressBar(1, ImVec2(-1, 0), buff);
+		strings.push_back(std::string(32, 0));
+		snprintf(&strings.back()[0], 32, "Total: %d", sum);
+		ImGui::ProgressBar(1, ImVec2(-1, 0), strings.back().c_str());
 
 		for (std::pair<uint32_t, uint16_t> pair : pairs)
 		{
 			ImGui::PushStyleColor(ImGuiCol_PlotHistogram, color_array[1][pair.first >> 16]);
-			std::string display = std::to_string(pair.second).append(" ").append(std::string(get_name(pair.first)));
-			ImGui::ProgressBar(pair.second / (pairs[0].second + .001f), ImVec2(-1, 0), display.c_str());
+			strings.push_back(std::to_string(pair.second).append(" ").append(std::string(get_name(pair.first))));
+			ImGui::ProgressBar(pair.second / (pairs[0].second + .001f), ImVec2(-1, 0), strings.back().c_str());
 			ImGui::PopStyleColor();
 		}
 		ImGui::PopStyleColor();
@@ -385,9 +388,9 @@ uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or
 		if( ImGui::BeginPopupContextWindow(NULL, 1))
 		{
 			std::lock_guard<std::mutex>lock(mtx);
-			char cbuffer[16] = {};
-			snprintf(cbuffer, 16, " Current ");
-			if (ImGui::Button(cbuffer))
+			strings.push_back(std::string(32, 0));
+			snprintf(&strings.back()[0], 32, " Current ");
+			if (ImGui::Button(strings.back().c_str()))
 			{
 				combatants_to_display = &history[combatants_idx];
 				ImGui::CloseCurrentPopup();
@@ -397,9 +400,9 @@ uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or
 				order_idx = 5;
 			for(int i = 0; i < 5; i++)
 			{
-				char hbuffer[16] = {};
-				snprintf(hbuffer, 16, "History %d", i+1);
-				if(ImGui::Button(hbuffer))
+				strings.push_back(std::string(32, 0));
+				snprintf(&strings.back()[0], 32, "History %d", i+1);
+				if(ImGui::Button(strings.back().c_str()))
 				{
 					combatants_to_display = &history[order_idx];
 					ImGui::CloseCurrentPopup();

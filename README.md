@@ -14,7 +14,7 @@ targeting [ImGui 1.8](https://github.com/ocornut/imgui/tree/v1.80)
 
 msvc x64:
 ```
-cl /LD /EHsc /O2 know_thy_enemy.cpp imgui.lib
+build_win32.bat
 ```
 
 ## Install:

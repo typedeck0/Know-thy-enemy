@@ -12,8 +12,8 @@
 #include "imgui/imgui.h"
 #include <string>
 #include <sstream>
-#include <deque>
 #include <cstdio>
+#include <time.h>
 
 std::mutex mtx;
 
@@ -220,11 +220,11 @@ uintptr_t mod_wnd(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	return uMsg;
 }
 
-std::unordered_map<uint32_t, uint16_t>* combatants = new std::unordered_map<uint32_t, uint16_t>();
 std::unordered_map<uintptr_t, bool> ids = std::unordered_map<uintptr_t, bool>();
 
-std::deque<std::unordered_map<uint32_t, uint16_t>*> history = std::deque<std::unordered_map<uint32_t, uint16_t>*>();
-std::unordered_map<uint32_t, uint16_t>* combatants_to_display = combatants;
+std::vector<std::unordered_map<uint32_t, uint16_t>> history = std::vector<std::unordered_map<uint32_t, uint16_t>>();
+int combatants_idx = 0;
+std::unordered_map<uint32_t, uint16_t>* combatants_to_display;
 
 void record_agent(ag* agent, uint16_t instid)
 {
@@ -235,42 +235,43 @@ void record_agent(ag* agent, uint16_t instid)
 
 	uint32_t id = ((agent->prof & 0xFFFF) << 16) | (agent->elite & 0xFFFF);
 
-	if (combatants->count(id))
+	if (history[combatants_idx].count(id))
 	{
-		combatants->at(id)++;
+		history[combatants_idx].at(id)++;
 	}
 	else
 	{
-		combatants->emplace(id, 1);
+		history[combatants_idx].emplace(id, 1);
 	}
+
 	return;
 }
+
 bool enabled = true;
+std::time_t log_start = time(NULL);
 /* combat callback -- may be called asynchronously, use id param to keep track of order, first event id will be 2. return ignored */
 /* at least one participant will be party/squad or minion of, or a buff applied by squad in the case of buff remove. not all statechanges present, see evtc statechange enum */
 uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t id, uint64_t revision) 
 {
 	if(ev && enabled)
 	{
-		if (ev->is_statechange == CBTS_LOGSTART)
+		if (ev->is_statechange == CBTS_LOGSTART && (time(NULL) - log_start) > 3)
 		{
+			log_start = time(NULL);
+
 			std::lock_guard<std::mutex>lock(mtx);
-			if (!combatants->empty())
+			if(!history[combatants_idx].empty())
 			{
-				if (history.size() == 5)
+				int prev_idx = combatants_idx;
+				combatants_idx = (combatants_idx + 1) % 6;
+				if(combatants_to_display == &history[prev_idx])
 				{
-					if (combatants_to_display == history.back())
-						combatants_to_display = combatants;
-					history.back()->clear();
-					delete history.back();
-					history.pop_back();
+					combatants_to_display = &history[combatants_idx];
 				}
-				history.push_front(combatants);
-				combatants = new std::unordered_map<uint32_t, uint16_t>();
-				if(combatants_to_display == history.front())
-					combatants_to_display = combatants;
+				history[combatants_idx].clear();
 				ids.clear();
 			}
+
 			return 0;
 		}
 		if (ev->is_activation || ev->is_buffremove || ev->is_statechange || ev->buff || src->elite == 0xFFFFFFFF || dst->elite == 0xFFFFFFFF || src->prof == 0 || dst->prof == 0)
@@ -384,22 +385,27 @@ uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or
 		if( ImGui::BeginPopupContextWindow(NULL, 1))
 		{
 			char cbuffer[16] = {};
-			snprintf(cbuffer, 16, "Current %04x  ", (uint16_t)combatants);
+			snprintf(cbuffer, 16, " Current ");
 			if (ImGui::Button(cbuffer))
 			{
-				combatants_to_display = combatants;
+				combatants_to_display = &history[combatants_idx];
 				ImGui::CloseCurrentPopup();
 			}
-
-			for(int i = 0; i < history.size(); i++)
+			int order_idx = combatants_idx - 1;
+			if(order_idx < 0)
+				order_idx = 5;
+			for(int i = 0; i < 5; i++)
 			{
 				char hbuffer[16] = {};
-				snprintf(hbuffer, 16, "History %d %04x", i+1, (uint16_t)history.at(i));
+				snprintf(hbuffer, 16, "History %d", i+1);
 				if(ImGui::Button(hbuffer))
 				{
-					combatants_to_display = history.at(i);
+					combatants_to_display = &history[order_idx];
 					ImGui::CloseCurrentPopup();
 				}
+				order_idx--;
+				if(order_idx < 0)
+					order_idx = 5;
 			}
 			ImGui::EndPopup();
 		}
@@ -422,6 +428,12 @@ arcdps_exports* mod_init() {
 	arc_exports.options_windows = options_windows_proc;
 	//arc_exports.size = (uintptr_t)"error message if you decide to not load, sig must be 0";
 	init_colors();
+	for(int i = 0; i < 6; i++)
+	{
+		history.push_back(std::unordered_map<uint32_t, uint16_t>());
+	}
+	combatants_idx = 0;
+	combatants_to_display = &history[combatants_idx];
 	log_arc((char*)"know_thy_enemy mod_init"); // if using vs2015+, project properties > c++ > conformance mode > permissive to avoid const to not const conversion error
 	return &arc_exports;
 }

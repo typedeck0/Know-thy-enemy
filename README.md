@@ -12,7 +12,7 @@ Counts the amount and type of player enemies (that your squad hits or is hit by)
 ## Build
 targeting [ImGui 1.8](https://github.com/ocornut/imgui/tree/v1.80)
 
-msvc x64:
+[msvc](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) x64:
 ```
 build_win32.bat
 ```

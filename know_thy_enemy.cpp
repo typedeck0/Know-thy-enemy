@@ -12,8 +12,9 @@
 #include "imgui/imgui.h"
 #include <string>
 #include <sstream>
+#include <deque>
 #include <cstdio>
-#include <time.h>
+#include <fstream>
 
 std::mutex mtx;
 
@@ -147,11 +148,13 @@ uintptr_t mod_wnd(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t id, uint64_t revision);
 void log_file(char* str);
 void log_arc(char* str);
+void save_settings();
 
 /* arcdps exports */
 void* filelog;
 void* arclog;
 void* arccolors;
+wchar_t*(*get_settings_path)();
 
 /* dll main -- winapi */
 BOOL APIENTRY DllMain(HANDLE hModule, DWORD ulReasonForCall, LPVOID lpReserved) {
@@ -195,6 +198,7 @@ void dll_exit() {
 extern "C" __declspec(dllexport) void* get_init_addr(char* arcversion, ImGuiContext* imguictx, void* id3dptr, HANDLE arcdll, void* mallocfn, void* freefn, uint32_t d3dversion) {
 	// id3dptr is IDirect3D9* if d3dversion==9, or IDXGISwapChain* if d3dversion==11
 	arcvers = arcversion;
+	get_settings_path = (wchar_t*(*)())GetProcAddress((HMODULE)arcdll, "e0");
 	arclog = (void*)GetProcAddress((HMODULE)arcdll, "e8");
 	arccolors = (void*)GetProcAddress((HMODULE)arcdll, "e5");
 	ImGui::SetCurrentContext((ImGuiContext*)imguictx);
@@ -211,6 +215,7 @@ extern "C" __declspec(dllexport) void* get_release_addr() {
 /* release mod -- return ignored */
 uintptr_t mod_release() {
 	FreeConsole();
+	save_settings();
 	return 0;
 }
 
@@ -220,11 +225,11 @@ uintptr_t mod_wnd(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	return uMsg;
 }
 
+std::unordered_map<uint32_t, uint16_t>* combatants = new std::unordered_map<uint32_t, uint16_t>();
 std::unordered_map<uintptr_t, bool> ids = std::unordered_map<uintptr_t, bool>();
 
-std::vector<std::unordered_map<uint32_t, uint16_t>> history = std::vector<std::unordered_map<uint32_t, uint16_t>>();
-int combatants_idx = 0;
-std::unordered_map<uint32_t, uint16_t>* combatants_to_display;
+std::deque<std::unordered_map<uint32_t, uint16_t>*> history = std::deque<std::unordered_map<uint32_t, uint16_t>*>();
+std::unordered_map<uint32_t, uint16_t>* combatants_to_display = combatants;
 
 void record_agent(ag* agent, uint16_t instid)
 {
@@ -235,43 +240,42 @@ void record_agent(ag* agent, uint16_t instid)
 
 	uint32_t id = ((agent->prof & 0xFFFF) << 16) | (agent->elite & 0xFFFF);
 
-	if (history[combatants_idx].count(id))
+	if (combatants->count(id))
 	{
-		history[combatants_idx].at(id)++;
+		combatants->at(id)++;
 	}
 	else
 	{
-		history[combatants_idx].emplace(id, 1);
+		combatants->emplace(id, 1);
 	}
-
 	return;
 }
-
 bool enabled = true;
-std::time_t log_start = time(NULL);
 /* combat callback -- may be called asynchronously, use id param to keep track of order, first event id will be 2. return ignored */
 /* at least one participant will be party/squad or minion of, or a buff applied by squad in the case of buff remove. not all statechanges present, see evtc statechange enum */
 uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t id, uint64_t revision) 
 {
 	if(ev && enabled)
 	{
-		if (ev->is_statechange == CBTS_LOGSTART && (time(NULL) - log_start) > 3)
+		if (ev->is_statechange == CBTS_LOGSTART)
 		{
-			log_start = time(NULL);
-
 			std::lock_guard<std::mutex>lock(mtx);
-			if(!history[combatants_idx].empty())
+			if (!combatants->empty())
 			{
-				int prev_idx = combatants_idx;
-				combatants_idx = (combatants_idx + 1) % 6;
-				if(combatants_to_display == &history[prev_idx])
+				if (history.size() == 5)
 				{
-					combatants_to_display = &history[combatants_idx];
+					if (combatants_to_display == history.back())
+						combatants_to_display = combatants;
+					history.back()->clear();
+					delete history.back();
+					history.pop_back();
 				}
-				history[combatants_idx].clear();
+				history.push_front(combatants);
+				combatants = new std::unordered_map<uint32_t, uint16_t>();
+				if(combatants_to_display == history.front())
+					combatants_to_display = combatants;
 				ids.clear();
 			}
-
 			return 0;
 		}
 		if (ev->is_activation || ev->is_buffremove || ev->is_statechange || ev->buff || src->elite == 0xFFFFFFFF || dst->elite == 0xFFFFFFFF || src->prof == 0 || dst->prof == 0)
@@ -344,15 +348,12 @@ char* get_name(uint32_t id)
 	}
 }
 
-std::vector<std::string> strings = std::vector<std::string>();
-
 uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or_ooc)
 {
 	// for (std::string* sptr : to_delete)
 	// 	delete sptr;
 	if (not_charsel_or_loading && enabled)
 	{
-		strings.clear();
 		uint32_t sum = 0;
 		std::vector<std::pair<uint32_t, uint16_t>> pairs = std::vector<std::pair<uint32_t, uint16_t>>();
 		{
@@ -372,49 +373,88 @@ uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or
 
 		ImGui::Begin("Know thy enemy", &enabled);
 		ImGui::PushStyleColor(ImGuiCol_Text, color_array[0][4]);
-		strings.push_back(std::string(32, 0));
-		snprintf(&strings.back()[0], 32, "Total: %d", sum);
-		ImGui::ProgressBar(1, ImVec2(-1, 0), strings.back().c_str());
+		char buff[32] = {};
+		snprintf(buff, 32, "%04x Total: %d", (uint16_t)combatants_to_display, sum);
+		ImGui::ProgressBar(1, ImVec2(-1, 0), buff);
 
 		for (std::pair<uint32_t, uint16_t> pair : pairs)
 		{
 			ImGui::PushStyleColor(ImGuiCol_PlotHistogram, color_array[1][pair.first >> 16]);
-			strings.push_back(std::to_string(pair.second).append(" ").append(std::string(get_name(pair.first))));
-			ImGui::ProgressBar(pair.second / (pairs[0].second + .001f), ImVec2(-1, 0), strings.back().c_str());
+			std::string display = std::to_string(pair.second).append(" ").append(std::string(get_name(pair.first)));
+			ImGui::ProgressBar(pair.second / (pairs[0].second + .001f), ImVec2(-1, 0), display.c_str());
 			ImGui::PopStyleColor();
 		}
 		ImGui::PopStyleColor();
 
 		if( ImGui::BeginPopupContextWindow(NULL, 1))
 		{
-			std::lock_guard<std::mutex>lock(mtx);
-			strings.push_back(std::string(32, 0));
-			snprintf(&strings.back()[0], 32, " Current ");
-			if (ImGui::Button(strings.back().c_str()))
+			char cbuffer[16] = {};
+			snprintf(cbuffer, 16, "Current %04x  ", (uint16_t)combatants);
+			if (ImGui::Button(cbuffer))
 			{
-				combatants_to_display = &history[combatants_idx];
+				combatants_to_display = combatants;
 				ImGui::CloseCurrentPopup();
 			}
-			int order_idx = combatants_idx - 1;
-			if(order_idx < 0)
-				order_idx = 5;
-			for(int i = 0; i < 5; i++)
+
+			for(int i = 0; i < history.size(); i++)
 			{
-				strings.push_back(std::string(32, 0));
-				snprintf(&strings.back()[0], 32, "History %d", i+1);
-				if(ImGui::Button(strings.back().c_str()))
+				char hbuffer[16] = {};
+				snprintf(hbuffer, 16, "History %d %04x", i+1, (uint16_t)history.at(i));
+				if(ImGui::Button(hbuffer))
 				{
-					combatants_to_display = &history[order_idx];
+					combatants_to_display = history.at(i);
 					ImGui::CloseCurrentPopup();
 				}
-				order_idx--;
-				if(order_idx < 0)
-					order_idx = 5;
 			}
 			ImGui::EndPopup();
 		}
 	}
 	return 0;
+}
+
+void save_settings()
+{
+	std::wstring path = std::wstring(get_settings_path());
+	std::string cpath(path.begin(), path.end());
+	cpath = cpath.substr(0, cpath.find_last_of("\\")+1);
+	cpath.append("know_thy_enemy_settings.txt");
+	std::fstream file(cpath.c_str(), std::fstream::in | std::fstream::out | std::fstream::trunc);
+	if (file.good())
+	{
+		file << "enabled=" << (enabled ? '1' : '0') << "\n";
+	}
+	file.close();
+}
+
+
+void init_settings()
+{
+	std::wstring path = std::wstring(get_settings_path());
+	std::string cpath(path.begin(), path.end());
+	cpath = cpath.substr(0, cpath.find_last_of("\\")+1);
+	cpath.append("know_thy_enemy_settings.txt");
+	std::fstream file(cpath.c_str(), std::fstream::in | std::fstream::out | std::fstream::app);
+	std::string line;
+	bool success = false;
+	if (file.good())
+	{
+		while (std::getline(file, line))
+		{
+			std::size_t sEnabled = line.find_first_of("enabled=");
+			if(sEnabled != std::string::npos)
+			{
+				enabled = (line[8] == '1');
+				success = true;
+				break;
+			}
+		}
+	}
+	if (!success)
+	{
+		file.open(cpath.c_str(), std::fstream::in | std::fstream::out | std::fstream::trunc);
+		file << "enabled=1\n";
+	}
+	file.close();
 }
 
 /* initialize mod -- return table that arcdps will use for callbacks. exports struct and strings are copied to arcdps memory only once at init */
@@ -425,19 +465,14 @@ arcdps_exports* mod_init() {
 	arc_exports.imguivers = IMGUI_VERSION_NUM;
 	arc_exports.size = sizeof(arcdps_exports);
 	arc_exports.out_name = "Know thy enemy";
-	arc_exports.out_build = "0.0";
+	arc_exports.out_build = "1.4";
 	arc_exports.imgui = imgui_proc;
 	arc_exports.wnd_nofilter = mod_wnd;
 	arc_exports.combat = mod_combat;
 	arc_exports.options_windows = options_windows_proc;
 	//arc_exports.size = (uintptr_t)"error message if you decide to not load, sig must be 0";
 	init_colors();
-	for(int i = 0; i < 6; i++)
-	{
-		history.push_back(std::unordered_map<uint32_t, uint16_t>());
-	}
-	combatants_idx = 0;
-	combatants_to_display = &history[combatants_idx];
+	init_settings();
 	log_arc((char*)"know_thy_enemy mod_init"); // if using vs2015+, project properties > c++ > conformance mode > permissive to avoid const to not const conversion error
 	return &arc_exports;
 }

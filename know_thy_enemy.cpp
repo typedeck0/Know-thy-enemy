@@ -132,6 +132,11 @@ typedef struct ag {
 
 /* proto/globals */
 uint32_t cbtcount = 0;
+bool enabled = true;
+bool mod_key1 = false;
+bool mod_key2 = false;
+ImGuiWindowFlags wFlags = 0;
+
 arcdps_exports arc_exports;
 char* arcvers;
 void dll_init(HANDLE hModule);
@@ -144,13 +149,15 @@ uintptr_t mod_wnd(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t id, uint64_t revision);
 void log_file(char* str);
 void log_arc(char* str);
-void save_settings();
+void save_kte_settings();
 
 /* arcdps exports */
 void* filelog;
 void* arclog;
 void* arccolors;
 wchar_t*(*get_settings_path)();
+uint64_t(*get_ui_settings)();
+uint64_t(*get_key_settings)();
 
 /* dll main -- winapi */
 BOOL APIENTRY DllMain(HANDLE hModule, DWORD ulReasonForCall, LPVOID lpReserved) {
@@ -197,6 +204,8 @@ extern "C" __declspec(dllexport) void* get_init_addr(char* arcversion, ImGuiCont
 	get_settings_path = (wchar_t*(*)())GetProcAddress((HMODULE)arcdll, "e0");
 	arclog = (void*)GetProcAddress((HMODULE)arcdll, "e8");
 	arccolors = (void*)GetProcAddress((HMODULE)arcdll, "e5");
+	get_ui_settings = (uint64_t(*)())GetProcAddress((HMODULE)arcdll, "e6");
+	get_key_settings = (uint64_t(*)())GetProcAddress((HMODULE)arcdll, "e7");
 	ImGui::SetCurrentContext((ImGuiContext*)imguictx);
 	ImGui::SetAllocatorFunctions((void *(*)(size_t, void*))mallocfn, (void (*)(void*, void*))freefn); // on imgui 1.80+
 	return mod_init;
@@ -211,13 +220,48 @@ extern "C" __declspec(dllexport) void* get_release_addr() {
 /* release mod -- return ignored */
 uintptr_t mod_release() {
 	FreeConsole();
-	save_settings();
+	save_kte_settings();
 	return 0;
 }
 
 /* window callback -- return is assigned to umsg (return zero to not be processed by arcdps or game) */
-uintptr_t mod_wnd(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+uintptr_t mod_wnd(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
+{
+	if ((get_ui_settings() >> 2) & 1)
+	{
+		wFlags = ImGuiWindowFlags_NoMove;
+		if (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) 
+		{
+			uint64_t keys = get_key_settings();
+			uint16_t* mod_key = (uint16_t*)&keys;
+			if (wParam == *mod_key)
+			{
+				mod_key1 = true;
+			}
+			if (wParam == *(mod_key+1))
+			{
+				mod_key2 = true;
+			}
+		}
 
+		if (uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP) 
+		{
+			uint64_t keys = get_key_settings();
+			uint16_t* mod_key = (uint16_t*)&keys;
+			if (wParam == *mod_key)
+			{
+				mod_key1 = false;
+			}
+			if (wParam == *(mod_key+1))
+			{
+				mod_key2 = false;
+			}
+		}
+		if (mod_key1 && mod_key2)
+			wFlags = 0;
+	}
+	else
+		wFlags = 0;
 	return uMsg;
 }
 
@@ -248,7 +292,6 @@ void record_agent(ag* agent, uint16_t instid)
 	return;
 }
 
-bool enabled = true;
 std::time_t log_start = time(NULL);
 /* combat callback -- may be called asynchronously, use id param to keep track of order, first event id will be 2. return ignored */
 /* at least one participant will be party/squad or minion of, or a buff applied by squad in the case of buff remove. not all statechanges present, see evtc statechange enum */
@@ -371,7 +414,7 @@ uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or
 		}
 		);
 
-		ImGui::Begin("Know thy enemy", &enabled);
+		ImGui::Begin("Know thy enemy", &enabled, wFlags);
 		ImGui::PushStyleColor(ImGuiCol_Text, color_array[0][4]);
 		strings.push_back(std::string(32, 0));
 		snprintf(&strings.back()[0], 32, "Total: %d", sum);
@@ -418,7 +461,7 @@ uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or
 	return 0;
 }
 
-void save_settings()
+void save_kte_settings()
 {
 	std::wstring path = std::wstring(get_settings_path());
 	std::string cpath(path.begin(), path.end());
@@ -433,7 +476,7 @@ void save_settings()
 }
 
 
-void init_settings()
+void init_kte_settings()
 {
 	std::wstring path = std::wstring(get_settings_path());
 	std::string cpath(path.begin(), path.end());
@@ -478,7 +521,7 @@ arcdps_exports* mod_init() {
 	arc_exports.options_windows = options_windows_proc;
 	//arc_exports.size = (uintptr_t)"error message if you decide to not load, sig must be 0";
 	init_colors();
-	init_settings();
+	init_kte_settings();
 	for(int i = 0; i < 6; i++)
 	{
 		history.push_back(std::unordered_map<uint32_t, uint16_t>());

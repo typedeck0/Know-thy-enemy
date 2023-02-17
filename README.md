@@ -1,4 +1,4 @@
-# Know-thy-enemy
+# Know-thy-enemy [WvW]
 [![](https://img.shields.io/github/downloads/typedeck0/know-thy-enemy/total?style=plastic)](../../releases)
 
 Tired of commanders saying "They're *twice* our size!"? Well now you can put a number on it!

@@ -229,7 +229,7 @@ uintptr_t mod_wnd(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
 	if ((get_ui_settings() >> 2) & 1)
 	{
-		wFlags = ImGuiWindowFlags_NoMove;
+		wFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
 		if (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) 
 		{
 			uint64_t keys = get_key_settings();

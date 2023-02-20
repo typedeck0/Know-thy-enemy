@@ -137,6 +137,7 @@ bool mod_key1 = false;
 bool mod_key2 = false;
 ImGuiWindowFlags wFlags = 0;
 
+
 arcdps_exports arc_exports;
 char* arcvers;
 void dll_init(HANDLE hModule);
@@ -265,58 +266,71 @@ uintptr_t mod_wnd(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	return uMsg;
 }
 
+
+typedef std::unordered_map<uint32_t, uint16_t> id_umap;
+typedef std::unordered_map<uint16_t, std::vector<id_umap>> team_history;
+
 std::unordered_map<uint16_t, bool> ids = std::unordered_map<uint16_t, bool>();
 
-std::vector<std::unordered_map<uint32_t, uint16_t>> history = std::vector<std::unordered_map<uint32_t, uint16_t>>();
+team_history history = team_history();
 int combatants_idx = 0;
-std::unordered_map<uint32_t, uint16_t>* combatants_to_display;
+int combatants_disp_idx = 0;
+uint16_t selected_team = 0;
+
 
 void record_agent(ag* agent, uint16_t instid)
 {
 	std::lock_guard<std::mutex>lock(mtx);
-	if (ids.count(instid))
+	if (history.find(agent->team) == history.end())
+	{
+		history.emplace(agent->team, std::vector<id_umap>());
+		for(int i = 0; i < 6; i++)
+		{
+			history.at(agent->team).push_back(id_umap());
+		}
+	}
+
+	if (ids.find(instid) != ids.end())
 		return;
 	ids.emplace(instid, true);
 
 	uint32_t id = ((agent->prof & 0xFFFF) << 16) | (agent->elite & 0xFFFF);
 
-	if (history[combatants_idx].count(id))
+	if (history.at(agent->team)[combatants_idx].find(id) != history.at(agent->team)[combatants_idx].end())
 	{
-		history[combatants_idx].at(id)++;
+		history.at(agent->team)[combatants_idx].at(id)++;
 	}
 	else
 	{
-		history[combatants_idx].emplace(id, 1);
+		history.at(agent->team)[combatants_idx].emplace(id, 1);
 	}
 
 	return;
 }
 
-std::time_t log_start = time(NULL);
 /* combat callback -- may be called asynchronously, use id param to keep track of order, first event id will be 2. return ignored */
 /* at least one participant will be party/squad or minion of, or a buff applied by squad in the case of buff remove. not all statechanges present, see evtc statechange enum */
 uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t id, uint64_t revision) 
 {
 	if(ev && enabled)
 	{
-		if (ev->is_statechange == CBTS_LOGSTART && (time(NULL) - log_start) > 3)
+		if (ev->is_statechange == CBTS_LOGEND)
 		{
-			log_start = time(NULL);
-
 			std::lock_guard<std::mutex>lock(mtx);
-			if(!history[combatants_idx].empty())
+			for (auto team : history)
 			{
-				int prev_idx = combatants_idx;
-				combatants_idx = (combatants_idx + 1) % 6;
-				if(combatants_to_display == &history[prev_idx])
+				if (!team.second[combatants_idx].empty())
 				{
-					combatants_to_display = &history[combatants_idx];
+					combatants_idx = (combatants_idx + 1) % 6;
+					for (auto clear_team : history)
+					{
+						history.at(clear_team.first)[combatants_idx].clear();
+					}
+					ids.clear();
+					combatants_disp_idx = combatants_idx;
+					return 0;
 				}
-				history[combatants_idx].clear();
-				ids.clear();
 			}
-
-			return 0;
 		}
 		if (ev->is_activation || ev->is_buffremove || ev->is_statechange || ev->buff || src->elite == 0xFFFFFFFF || dst->elite == 0xFFFFFFFF || src->prof == 0 || dst->prof == 0)
 			return 0;
@@ -328,7 +342,6 @@ uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t i
 				record_agent(dst, ev->dst_instid);
 		}
 	}
-
 	return 0;
 }
 
@@ -390,6 +403,12 @@ char* get_name(uint32_t id)
 
 std::vector<std::string> strings = std::vector<std::string>();
 
+void new_string_int(char * format, int val)
+{
+	strings.push_back(std::string(32, 0));
+	snprintf(&strings.back()[0], 32, format, val);
+}
+
 uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or_ooc)
 {
 	// for (std::string* sptr : to_delete)
@@ -397,63 +416,82 @@ uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or
 	if (not_charsel_or_loading && enabled)
 	{
 		strings.clear();
-		uint32_t sum = 0;
-		std::vector<std::pair<uint32_t, uint16_t>> pairs = std::vector<std::pair<uint32_t, uint16_t>>();
+		ImGui::Begin("Know thy enemy", &enabled, wFlags);
+		if (ImGui::BeginTabBar("MyTabBar", 0))
 		{
-			std::lock_guard<std::mutex>lock(mtx);
-			for (auto itr = combatants_to_display->begin(); itr != combatants_to_display->end(); ++itr)
+			for (auto team : history)
 			{
-				sum += (*itr).second;
-				pairs.push_back(*itr);
+				new_string_int("Team %d", team.first);
+				if (ImGui::BeginTabItem(strings.back().c_str()))
+				{
+					selected_team = team.first;
+					id_umap* combatants_to_display = &(history.at(selected_team)[combatants_disp_idx]);
+					uint32_t sum = 0;
+					std::vector<std::pair<uint32_t, uint16_t>> pairs = std::vector<std::pair<uint32_t, uint16_t>>();
+					{
+						std::lock_guard<std::mutex>lock(mtx);
+						for (auto itr = combatants_to_display->begin(); itr != combatants_to_display->end(); ++itr)
+						{
+							sum += (*itr).second;
+							pairs.push_back(*itr);
+						}
+					}
+
+					std::sort(pairs.begin(), pairs.end(), [=](std::pair<uint32_t, uint16_t>& a, std::pair<uint32_t, uint16_t>& b)
+					{
+						return a.second > b.second;
+					}
+					);
+
+					ImGui::PushStyleColor(ImGuiCol_Text, color_array[0][4]);
+					new_string_int("Total: %d", sum);
+					ImGui::ProgressBar(1, ImVec2(-1, 0), strings.back().c_str());
+
+					for (std::pair<uint32_t, uint16_t> pair : pairs)
+					{
+						ImGui::PushStyleColor(ImGuiCol_PlotHistogram, color_array[1][pair.first >> 16]);
+						strings.push_back(std::to_string(pair.second).append(" ").append(std::string(get_name(pair.first))));
+						ImGui::ProgressBar(pair.second / (pairs[0].second + .001f), ImVec2(-1, 0), strings.back().c_str());
+						ImGui::PopStyleColor();
+					}
+					ImGui::PopStyleColor();
+
+					ImGui::EndTabItem();
+				}
 			}
 		}
-
-		std::sort(pairs.begin(), pairs.end(), [=](std::pair<uint32_t, uint16_t>& a, std::pair<uint32_t, uint16_t>& b)
-		{
-			return a.second > b.second;
-		}
-		);
-
-		ImGui::Begin("Know thy enemy", &enabled, wFlags);
-		ImGui::PushStyleColor(ImGuiCol_Text, color_array[0][4]);
-		strings.push_back(std::string(32, 0));
-		snprintf(&strings.back()[0], 32, "Total: %d", sum);
-		ImGui::ProgressBar(1, ImVec2(-1, 0), strings.back().c_str());
-
-		for (std::pair<uint32_t, uint16_t> pair : pairs)
-		{
-			ImGui::PushStyleColor(ImGuiCol_PlotHistogram, color_array[1][pair.first >> 16]);
-			strings.push_back(std::to_string(pair.second).append(" ").append(std::string(get_name(pair.first))));
-			ImGui::ProgressBar(pair.second / (pairs[0].second + .001f), ImVec2(-1, 0), strings.back().c_str());
-			ImGui::PopStyleColor();
-		}
-		ImGui::PopStyleColor();
 
 		if( ImGui::BeginPopupContextWindow(NULL, 1))
 		{
-			std::lock_guard<std::mutex>lock(mtx);
-			strings.push_back(std::string(32, 0));
-			snprintf(&strings.back()[0], 32, " Current ");
-			if (ImGui::Button(strings.back().c_str()))
+			if(selected_team == 0)
 			{
-				combatants_to_display = &history[combatants_idx];
-				ImGui::CloseCurrentPopup();
+				ImGui::Text("No data...");
 			}
-			int order_idx = combatants_idx - 1;
-			if(order_idx < 0)
-				order_idx = 5;
-			for(int i = 0; i < 5; i++)
+			else
 			{
+				std::lock_guard<std::mutex>lock(mtx);
 				strings.push_back(std::string(32, 0));
-				snprintf(&strings.back()[0], 32, "History %d", i+1);
-				if(ImGui::Button(strings.back().c_str()))
+				snprintf(&strings.back()[0], 32, " Current ");
+				if (ImGui::Button(strings.back().c_str()))
 				{
-					combatants_to_display = &history[order_idx];
+					combatants_disp_idx = combatants_idx;
 					ImGui::CloseCurrentPopup();
 				}
-				order_idx--;
+				int order_idx = combatants_idx - 1;
 				if(order_idx < 0)
 					order_idx = 5;
+				for(int i = 0; i < 5; i++)
+				{
+					new_string_int("History %d", i+1);
+					if(ImGui::Button(strings.back().c_str()))
+					{
+						combatants_disp_idx = order_idx;
+						ImGui::CloseCurrentPopup();
+					}
+					order_idx--;
+					if(order_idx < 0)
+						order_idx = 5;
+				}
 			}
 			ImGui::EndPopup();
 		}
@@ -522,12 +560,8 @@ arcdps_exports* mod_init() {
 	//arc_exports.size = (uintptr_t)"error message if you decide to not load, sig must be 0";
 	init_colors();
 	init_kte_settings();
-	for(int i = 0; i < 6; i++)
-	{
-		history.push_back(std::unordered_map<uint32_t, uint16_t>());
-	}
 	combatants_idx = 0;
-	combatants_to_display = &history[combatants_idx];
+	combatants_disp_idx = 0;
 	log_arc((char*)"know_thy_enemy mod_init"); // if using vs2015+, project properties > c++ > conformance mode > permissive to avoid const to not const conversion error
 	return &arc_exports;
 }

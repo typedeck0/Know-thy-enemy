@@ -130,12 +130,76 @@ typedef struct ag {
 	uint16_t team; /* sep21+ */
 } ag;
 
+typedef struct LinkedMem {
+    uint32_t uiVersion;
+    uint32_t uiTick;
+    float fAvatarPosition[3];
+    float fAvatarFront[3];
+    float fAvatarTop[3];
+    wchar_t name[256];
+    float fCameraPosition[3];
+    float fCameraFront[3];
+    float fCameraTop[3];
+    wchar_t identity[256];
+    uint32_t context_len; // Despite the actual context containing more data, this value is currently 48. See "context" section below.
+    unsigned char context[256];
+    wchar_t description[2048];
+} LinkedMem;
+
+typedef struct MumbleContext {
+    unsigned char serverAddress[28]; // contains sockaddr_in or sockaddr_in6
+    uint32_t mapId;
+    uint32_t mapType;
+    uint32_t shardId;
+    uint32_t instance;
+    uint32_t buildId;
+    // Additional data beyond the <context_len> bytes the game instructs Mumble to use to distinguish between instances.
+    uint32_t uiState; // Bitmask: Bit 1 = IsMapOpen, Bit 2 = IsCompassTopRight, Bit 3 = DoesCompassHaveRotationEnabled, Bit 4 = Game has focus, Bit 5 = Is in Competitive game mode, Bit 6 = Textbox has focus, Bit 7 = Is in Combat
+    uint16_t compassWidth; // pixels
+    uint16_t compassHeight; // pixels
+    float compassRotation; // radians
+    float playerX; // continentCoords
+    float playerY; // continentCoords
+    float mapCenterX; // continentCoords
+    float mapCenterY; // continentCoords
+    float mapScale;
+    uint32_t processId;
+    uint8_t mountIndex;
+} MumbleContext;
+
+enum EMapType
+{
+	AutoRedirect = 0,
+	CharacterCreation = 1,
+	PvP = 2,
+	GvG = 3,
+	Instance = 4,
+	PvE = 5,
+	Tournament = 6,
+	Tutorial = 7,
+	UserTournament = 8,
+	WvW_EBG = 9,
+	WvW_BBL = 10,
+	WvW_GBL = 11,
+	WvW_RBL = 12,
+	WVW_REWARD = 13,            // SCRAPPED
+	WvW_ObsidianSanctum = 14,
+	WvW_EdgeOfTheMists = 15,
+	PvE_Mini = 16,              // Mini maps like Mistlock Sanctuary, Aerodrome, etc.
+	BIG_BATTLE = 17,            // SCRAPPED
+	WvW_Lounge = 18,
+	//WvW = 19                  // ended up getting removed, hinting at new wvw map?
+};
+
 /* proto/globals */
 uint32_t cbtcount = 0;
 bool enabled = true;
+bool is_wvw = false;
 bool mod_key1 = false;
 bool mod_key2 = false;
 ImGuiWindowFlags wFlags = 0;
+HANDLE mumbleLinkFile = NULL;
+LinkedMem* mumbleLinkedMem = nullptr;
 
 
 arcdps_exports arc_exports;
@@ -222,6 +286,10 @@ extern "C" __declspec(dllexport) void* get_release_addr() {
 uintptr_t mod_release() {
 	FreeConsole();
 	save_kte_settings();
+	if (mumbleLinkedMem != nullptr)
+		UnmapViewOfFile(mumbleLinkedMem);
+	if (mumbleLinkFile != NULL)
+		CloseHandle(mumbleLinkFile);
 	return 0;
 }
 
@@ -308,38 +376,100 @@ void record_agent(ag* agent, uint16_t instid)
 	return;
 }
 
+int check_wvw()
+{
+	int result = 0;
+
+	if (mumbleLinkFile == NULL)
+	{
+		mumbleLinkFile = CreateFileMapping(
+					INVALID_HANDLE_VALUE,    // use paging file
+					NULL,                    // default security
+					PAGE_READWRITE,          // read/write access
+					0,                       // maximum object size (high-order DWORD)
+					sizeof(LinkedMem) + 256 + 4096,                // maximum object size (low-order DWORD)
+					TEXT("MumbleLink"));                 // name of mapping object
+	}
+	if (mumbleLinkFile == NULL)
+	{
+		return -1;
+	}
+
+	if (mumbleLinkedMem == nullptr)
+		mumbleLinkedMem = (LinkedMem*) MapViewOfFile(mumbleLinkFile, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(LinkedMem)+256+4096);
+
+	if (mumbleLinkedMem == NULL)
+	{
+		CloseHandle(mumbleLinkFile);
+		return -1;
+	}
+
+	while (!mumbleLinkedMem->uiTick)
+		Sleep(100);
+
+	MumbleContext* context = (MumbleContext*)(&mumbleLinkedMem->context[0]);
+
+	switch (context->mapType)
+	{
+	case EMapType::WvW_BBL:
+	case EMapType::WvW_EBG:
+	case EMapType::WvW_EdgeOfTheMists:
+	case EMapType::WvW_GBL:
+	case EMapType::WvW_Lounge:
+	case EMapType::WvW_ObsidianSanctum:
+	case EMapType::WvW_RBL:
+		result = 1;
+		break;
+	default:
+		result = 0;
+		break;
+	}
+
+	return result;
+}
+
 /* combat callback -- may be called asynchronously, use id param to keep track of order, first event id will be 2. return ignored */
 /* at least one participant will be party/squad or minion of, or a buff applied by squad in the case of buff remove. not all statechanges present, see evtc statechange enum */
 uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t id, uint64_t revision) 
 {
-	if(ev && enabled)
+	if(enabled)
 	{
-		if (ev->is_statechange == CBTS_LOGEND)
+		if (ev && is_wvw)
 		{
-			std::lock_guard<std::mutex>lock(mtx);
-			for (auto team : history)
+			if (ev->is_statechange == CBTS_LOGEND)
 			{
-				if (!team.second[combatants_idx].empty())
+				std::lock_guard<std::mutex>lock(mtx);
+				for (auto team : history)
 				{
-					combatants_idx = (combatants_idx + 1) % 6;
-					for (auto clear_team : history)
+					if (!team.second[combatants_idx].empty())
 					{
-						history.at(clear_team.first)[combatants_idx].clear();
+						combatants_idx = (combatants_idx + 1) % 6;
+						for (auto clear_team : history)
+						{
+							history.at(clear_team.first)[combatants_idx].clear();
+						}
+						ids.clear();
+						combatants_disp_idx = combatants_idx;
+						return 0;
 					}
-					ids.clear();
-					combatants_disp_idx = combatants_idx;
-					return 0;
 				}
 			}
+			if (ev->is_activation || ev->is_buffremove || ev->is_statechange || ev->buff || src->elite == 0xFFFFFFFF || dst->elite == 0xFFFFFFFF || src->prof == 0 || dst->prof == 0)
+				return 0;
+			if (src && dst)
+			{
+				if (src->name == nullptr)
+					record_agent(src, ev->src_instid);
+				else if (dst->name == nullptr)
+					record_agent(dst, ev->dst_instid);
+			}
 		}
-		if (ev->is_activation || ev->is_buffremove || ev->is_statechange || ev->buff || src->elite == 0xFFFFFFFF || dst->elite == 0xFFFFFFFF || src->prof == 0 || dst->prof == 0)
-			return 0;
-		if (src && dst)
+		else
 		{
-			if (src->name == nullptr)
-				record_agent(src, ev->src_instid);
-			else if (dst->name == nullptr)
-				record_agent(dst, ev->dst_instid);
+			if (!src->elite && src->prof && dst->self) 
+			{
+				is_wvw = (check_wvw() == 1);
+			}
 		}
 	}
 	return 0;
@@ -411,9 +541,7 @@ void new_string_int(char * format, int val)
 
 uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or_ooc)
 {
-	// for (std::string* sptr : to_delete)
-	// 	delete sptr;
-	if (not_charsel_or_loading && enabled)
+	if (not_charsel_or_loading && enabled & is_wvw)
 	{
 		strings.clear();
 		ImGui::Begin("Know thy enemy", &enabled, wFlags);

@@ -700,7 +700,7 @@ void save_kte_settings()
 	{
 		file << "enabled=" << (enabled ? '1' : '0') << "\n";
 		file << "wFlags=" << std::to_string(wFlags) << "\n";
-		file << "titleTrans=" << (bTitleBg ? '1' : '0') << "\n"
+		file << "titleTrans=" << (bTitleBg ? '1' : '0') << "\n";
 	}
 	file.close();
 }

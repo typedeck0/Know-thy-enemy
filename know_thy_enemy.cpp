@@ -194,7 +194,7 @@ enum EMapType
 /* proto/globals */
 uint32_t cbtcount = 0;
 bool enabled = true;
-bool is_wvw = false;
+int is_wvw_state = -1;
 bool mod_key1 = false;
 bool mod_key2 = false;
 ImGuiWindowFlags wFlags = 0;
@@ -436,7 +436,7 @@ uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t i
 {
 	if(enabled)
 	{
-		if (ev && is_wvw)
+		if (ev && (is_wvw_state == 1))
 		{
 			if (ev->is_statechange == CBTS_LOGEND)
 			{
@@ -470,7 +470,8 @@ uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t i
 		{
 			if (!src->elite && src->prof && dst->self) 
 			{
-				is_wvw = (check_wvw() == 1);
+				is_wvw_state = -1;
+				is_wvw_state = check_wvw();
 			}
 		}
 	}
@@ -543,87 +544,94 @@ void new_string_int(char * format, int val)
 
 uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or_ooc)
 {
-	if (not_charsel_or_loading && enabled & is_wvw)
+	if (not_charsel_or_loading && enabled)
 	{
 		strings.clear();
 		ImGui::Begin("Know thy enemy", &enabled, wFlags);
-		if (ImGui::BeginTabBar("MyTabBar", 0))
+		if (is_wvw_state == 1)
 		{
-			for (auto team : history)
+			if (ImGui::BeginTabBar("MyTabBar", 0))
 			{
-				new_string_int("Team %d", team.first);
-				if (ImGui::BeginTabItem(strings.back().c_str()))
+				for (auto team : history)
 				{
-					selected_team = team.first;
-					id_umap* combatants_to_display = &(history.at(selected_team)[combatants_disp_idx]);
-					uint32_t sum = 0;
-					std::vector<std::pair<uint32_t, uint16_t>> pairs = std::vector<std::pair<uint32_t, uint16_t>>();
+					new_string_int("Team %d", team.first);
+					if (ImGui::BeginTabItem(strings.back().c_str()))
 					{
-						std::lock_guard<std::mutex>lock(mtx);
-						for (auto itr = combatants_to_display->begin(); itr != combatants_to_display->end(); ++itr)
+						selected_team = team.first;
+						id_umap* combatants_to_display = &(history.at(selected_team)[combatants_disp_idx]);
+						uint32_t sum = 0;
+						std::vector<std::pair<uint32_t, uint16_t>> pairs = std::vector<std::pair<uint32_t, uint16_t>>();
 						{
-							sum += (*itr).second;
-							pairs.push_back(*itr);
+							std::lock_guard<std::mutex>lock(mtx);
+							for (auto itr = combatants_to_display->begin(); itr != combatants_to_display->end(); ++itr)
+							{
+								sum += (*itr).second;
+								pairs.push_back(*itr);
+							}
 						}
-					}
 
-					std::sort(pairs.begin(), pairs.end(), [=](std::pair<uint32_t, uint16_t>& a, std::pair<uint32_t, uint16_t>& b)
-					{
-						return a.second > b.second;
-					}
-					);
+						std::sort(pairs.begin(), pairs.end(), [=](std::pair<uint32_t, uint16_t>& a, std::pair<uint32_t, uint16_t>& b)
+						{
+							return a.second > b.second;
+						}
+						);
 
-					ImGui::PushStyleColor(ImGuiCol_Text, color_array[0][4]);
-					new_string_int("Total: %d", sum);
-					ImGui::ProgressBar(1, ImVec2(-1, 0), strings.back().c_str());
+						ImGui::PushStyleColor(ImGuiCol_Text, color_array[0][4]);
+						new_string_int("Total: %d", sum);
+						ImGui::ProgressBar(1, ImVec2(-1, 0), strings.back().c_str());
 
-					for (std::pair<uint32_t, uint16_t> pair : pairs)
-					{
-						ImGui::PushStyleColor(ImGuiCol_PlotHistogram, color_array[1][pair.first >> 16]);
-						strings.push_back(std::to_string(pair.second).append(" ").append(std::string(get_name(pair.first))));
-						ImGui::ProgressBar(pair.second / (pairs[0].second + .001f), ImVec2(-1, 0), strings.back().c_str());
+						for (std::pair<uint32_t, uint16_t> pair : pairs)
+						{
+							ImGui::PushStyleColor(ImGuiCol_PlotHistogram, color_array[1][pair.first >> 16]);
+							strings.push_back(std::to_string(pair.second).append(" ").append(std::string(get_name(pair.first))));
+							ImGui::ProgressBar(pair.second / (pairs[0].second + .001f), ImVec2(-1, 0), strings.back().c_str());
+							ImGui::PopStyleColor();
+						}
 						ImGui::PopStyleColor();
+
+						ImGui::EndTabItem();
 					}
-					ImGui::PopStyleColor();
-
-					ImGui::EndTabItem();
 				}
 			}
-		}
 
-		if( ImGui::BeginPopupContextWindow(NULL, 1))
-		{
-			if(selected_team == 0)
+			if( ImGui::BeginPopupContextWindow(NULL, 1))
 			{
-				ImGui::Text("No data...");
-			}
-			else
-			{
-				std::lock_guard<std::mutex>lock(mtx);
-				strings.push_back(std::string(32, 0));
-				snprintf(&strings.back()[0], 32, " Current ");
-				if (ImGui::Button(strings.back().c_str()))
+				if(selected_team == 0)
 				{
-					combatants_disp_idx = combatants_idx;
-					ImGui::CloseCurrentPopup();
+					ImGui::Text("No data...");
 				}
-				int order_idx = combatants_idx - 1;
-				if(order_idx < 0)
-					order_idx = 5;
-				for(int i = 0; i < 5; i++)
+				else
 				{
-					new_string_int("History %d", i+1);
-					if(ImGui::Button(strings.back().c_str()))
+					std::lock_guard<std::mutex>lock(mtx);
+					strings.push_back(std::string(32, 0));
+					snprintf(&strings.back()[0], 32, " Current ");
+					if (ImGui::Button(strings.back().c_str()))
 					{
-						combatants_disp_idx = order_idx;
+						combatants_disp_idx = combatants_idx;
 						ImGui::CloseCurrentPopup();
 					}
-					order_idx--;
+					int order_idx = combatants_idx - 1;
 					if(order_idx < 0)
 						order_idx = 5;
+					for(int i = 0; i < 5; i++)
+					{
+						new_string_int("History %d", i+1);
+						if(ImGui::Button(strings.back().c_str()))
+						{
+							combatants_disp_idx = order_idx;
+							ImGui::CloseCurrentPopup();
+						}
+						order_idx--;
+						if(order_idx < 0)
+							order_idx = 5;
+					}
 				}
+				ImGui::EndPopup();
 			}
-			ImGui::EndPopup();
+		}
+		else if (is_wvw_state == -1)
+		{
+			ImGui::Text("Checking if WvW map...");
 		}
 	}
 	return 0;

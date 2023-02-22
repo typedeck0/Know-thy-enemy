@@ -348,6 +348,8 @@ uint16_t selected_team = 0;
 
 void record_agent(ag* agent, uint16_t instid)
 {
+	if (agent->team == 0)
+		return;
 	std::lock_guard<std::mutex>lock(mtx);
 	if (history.find(agent->team) == history.end())
 	{

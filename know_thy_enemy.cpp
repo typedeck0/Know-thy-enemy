@@ -220,6 +220,7 @@ void save_kte_settings();
 void* filelog;
 void* arclog;
 void* arccolors;
+void* arccontext_0x20;
 wchar_t*(*get_settings_path)();
 uint64_t(*get_ui_settings)();
 uint64_t(*get_key_settings)();
@@ -267,6 +268,7 @@ extern "C" __declspec(dllexport) void* get_init_addr(char* arcversion, ImGuiCont
 	// id3dptr is IDirect3D9* if d3dversion==9, or IDXGISwapChain* if d3dversion==11
 	arcvers = arcversion;
 	get_settings_path = (wchar_t*(*)())GetProcAddress((HMODULE)arcdll, "e0");
+	arccontext_0x20 = (void*)GetProcAddress((HMODULE)arcdll, "e2");
 	arclog = (void*)GetProcAddress((HMODULE)arcdll, "e8");
 	arccolors = (void*)GetProcAddress((HMODULE)arcdll, "e5");
 	get_ui_settings = (uint64_t(*)())GetProcAddress((HMODULE)arcdll, "e6");
@@ -475,6 +477,12 @@ void options_end_proc(const char* windowname)
 {
 	ImGui::Checkbox("Know thy enemy", &enabled);
 }
+
+void options_windows_proc(const char* windowname)
+{
+	// log_arc((char*)windowname);
+}
+
 
 char* get_name(uint32_t id)
 {
@@ -687,10 +695,12 @@ void save_kte_settings()
 	std::string cpath(path.begin(), path.end());
 	cpath = cpath.substr(0, cpath.find_last_of("\\")+1);
 	cpath.append("know_thy_enemy_settings.txt");
-	std::fstream file(cpath.c_str(), std::fstream::in | std::fstream::out | std::fstream::trunc);
+	std::fstream file(cpath.c_str(), std::fstream::out | std::fstream::trunc);
 	if (file.good())
 	{
 		file << "enabled=" << (enabled ? '1' : '0') << "\n";
+		file << "wFlags=" << std::to_string(wFlags) << "\n";
+		file << "titleTrans=" << (bTitleBg ? '1' : '0') << "\n"
 	}
 	file.close();
 }
@@ -709,19 +719,28 @@ void init_kte_settings()
 	{
 		while (std::getline(file, line))
 		{
-			std::size_t sEnabled = line.find_first_of("enabled=");
-			if(sEnabled != std::string::npos)
+			auto sep = line.find_first_of('=');
+			std::string key = line.substr(0, sep);
+			if (key.compare("enabled") == 0)
 			{
-				enabled = (line[8] == '1');
-				success = true;
-				break;
+				char val = line.substr(sep+1, line.size() - key.size() - 1)[0];
+				enabled = val == '1';
 			}
+			else if(key.compare("wFlags") == 0)
+			{
+				wFlags = std::stoi(line.substr(sep+1, line.size() - key.size() - 1));
+			}
+			else if (key.compare("titleTrans") == 0)
+			{
+				char val = line.substr(sep+1, line.size() - key.size() - 1)[0];
+				bTitleBg = val == '1';
+			}
+
 		}
 	}
 	if (!success)
 	{
 		file.open(cpath.c_str(), std::fstream::in | std::fstream::out | std::fstream::trunc);
-		file << "enabled=1\n";
 	}
 	file.close();
 }
@@ -739,6 +758,7 @@ arcdps_exports* mod_init() {
 	arc_exports.wnd_nofilter = mod_wnd;
 	arc_exports.combat = mod_combat;
 	arc_exports.options_end = options_end_proc;
+	arc_exports.options_windows = options_windows_proc;
 	//arc_exports.size = (uintptr_t)"error message if you decide to not load, sig must be 0";
 	init_colors();
 	init_kte_settings();

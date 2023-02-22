@@ -194,7 +194,7 @@ enum EMapType
 /* proto/globals */
 uint32_t cbtcount = 0;
 bool enabled = true;
-int is_wvw_state = -1;
+// int is_wvw_state = -1;
 bool mod_key1 = false;
 bool mod_key2 = false;
 ImGuiWindowFlags wFlags = 0;
@@ -378,57 +378,57 @@ void record_agent(ag* agent, uint16_t instid)
 	return;
 }
 
-int check_wvw()
-{
-	int result = 0;
+// int check_wvw()
+// {
+// 	int result = 0;
 
-	if (mumbleLinkFile == NULL)
-	{
-		mumbleLinkFile = CreateFileMapping(
-					INVALID_HANDLE_VALUE,    // use paging file
-					NULL,                    // default security
-					PAGE_READWRITE,          // read/write access
-					0,                       // maximum object size (high-order DWORD)
-					sizeof(LinkedMem) + 256 + 4096,                // maximum object size (low-order DWORD)
-					TEXT("MumbleLink"));                 // name of mapping object
-	}
-	if (mumbleLinkFile == NULL)
-	{
-		return -1;
-	}
+// 	if (mumbleLinkFile == NULL)
+// 	{
+// 		mumbleLinkFile = CreateFileMapping(
+// 					INVALID_HANDLE_VALUE,    // use paging file
+// 					NULL,                    // default security
+// 					PAGE_READWRITE,          // read/write access
+// 					0,                       // maximum object size (high-order DWORD)
+// 					sizeof(LinkedMem) + 256 + 4096,                // maximum object size (low-order DWORD)
+// 					TEXT("MumbleLink"));                 // name of mapping object
+// 	}
+// 	if (mumbleLinkFile == NULL)
+// 	{
+// 		return -1;
+// 	}
 
-	if (mumbleLinkedMem == nullptr)
-		mumbleLinkedMem = (LinkedMem*) MapViewOfFile(mumbleLinkFile, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(LinkedMem)+256+4096);
+// 	if (mumbleLinkedMem == nullptr)
+// 		mumbleLinkedMem = (LinkedMem*) MapViewOfFile(mumbleLinkFile, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(LinkedMem)+256+4096);
 
-	if (mumbleLinkedMem == NULL)
-	{
-		CloseHandle(mumbleLinkFile);
-		return -1;
-	}
+// 	if (mumbleLinkedMem == NULL)
+// 	{
+// 		CloseHandle(mumbleLinkFile);
+// 		return -1;
+// 	}
 
-	while (!mumbleLinkedMem->uiTick)
-		Sleep(100);
+// 	while (!mumbleLinkedMem->uiTick)
+// 		Sleep(100);
 
-	MumbleContext* context = (MumbleContext*)(&mumbleLinkedMem->context[0]);
+// 	MumbleContext* context = (MumbleContext*)(&mumbleLinkedMem->context[0]);
 
-	switch (context->mapType)
-	{
-	case EMapType::WvW_BBL:
-	case EMapType::WvW_EBG:
-	case EMapType::WvW_EdgeOfTheMists:
-	case EMapType::WvW_GBL:
-	case EMapType::WvW_Lounge:
-	case EMapType::WvW_ObsidianSanctum:
-	case EMapType::WvW_RBL:
-		result = 1;
-		break;
-	default:
-		result = 0;
-		break;
-	}
+// 	switch (context->mapType)
+// 	{
+// 	case EMapType::WvW_BBL:
+// 	case EMapType::WvW_EBG:
+// 	case EMapType::WvW_EdgeOfTheMists:
+// 	case EMapType::WvW_GBL:
+// 	case EMapType::WvW_Lounge:
+// 	case EMapType::WvW_ObsidianSanctum:
+// 	case EMapType::WvW_RBL:
+// 		result = 1;
+// 		break;
+// 	default:
+// 		result = 0;
+// 		break;
+// 	}
 
-	return result;
-}
+// 	return result;
+// }
 
 /* combat callback -- may be called asynchronously, use id param to keep track of order, first event id will be 2. return ignored */
 /* at least one participant will be party/squad or minion of, or a buff applied by squad in the case of buff remove. not all statechanges present, see evtc statechange enum */
@@ -436,7 +436,7 @@ uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t i
 {
 	if(enabled)
 	{
-		if (ev && (is_wvw_state == 1))
+		if (ev)
 		{
 			if (ev->is_statechange == CBTS_LOGEND)
 			{
@@ -464,14 +464,6 @@ uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t i
 					record_agent(src, ev->src_instid);
 				else if (dst->name == nullptr)
 					record_agent(dst, ev->dst_instid);
-			}
-		}
-		else
-		{
-			if (!src->elite && src->prof && dst->self) 
-			{
-				is_wvw_state = -1;
-				is_wvw_state = check_wvw();
 			}
 		}
 	}
@@ -548,90 +540,83 @@ uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or
 	{
 		strings.clear();
 		ImGui::Begin("Know thy enemy", &enabled, wFlags);
-		if (is_wvw_state == 1)
+		if (ImGui::BeginTabBar("MyTabBar", 0))
 		{
-			if (ImGui::BeginTabBar("MyTabBar", 0))
+			for (auto team : history)
 			{
-				for (auto team : history)
+				new_string_int("Team %d", team.first);
+				if (ImGui::BeginTabItem(strings.back().c_str()))
 				{
-					new_string_int("Team %d", team.first);
-					if (ImGui::BeginTabItem(strings.back().c_str()))
+					selected_team = team.first;
+					id_umap* combatants_to_display = &(history.at(selected_team)[combatants_disp_idx]);
+					uint32_t sum = 0;
+					std::vector<std::pair<uint32_t, uint16_t>> pairs = std::vector<std::pair<uint32_t, uint16_t>>();
 					{
-						selected_team = team.first;
-						id_umap* combatants_to_display = &(history.at(selected_team)[combatants_disp_idx]);
-						uint32_t sum = 0;
-						std::vector<std::pair<uint32_t, uint16_t>> pairs = std::vector<std::pair<uint32_t, uint16_t>>();
+						std::lock_guard<std::mutex>lock(mtx);
+						for (auto itr = combatants_to_display->begin(); itr != combatants_to_display->end(); ++itr)
 						{
-							std::lock_guard<std::mutex>lock(mtx);
-							for (auto itr = combatants_to_display->begin(); itr != combatants_to_display->end(); ++itr)
-							{
-								sum += (*itr).second;
-								pairs.push_back(*itr);
-							}
+							sum += (*itr).second;
+							pairs.push_back(*itr);
 						}
+					}
 
-						std::sort(pairs.begin(), pairs.end(), [=](std::pair<uint32_t, uint16_t>& a, std::pair<uint32_t, uint16_t>& b)
-						{
-							return a.second > b.second;
-						}
-						);
+					std::sort(pairs.begin(), pairs.end(), [=](std::pair<uint32_t, uint16_t>& a, std::pair<uint32_t, uint16_t>& b)
+					{
+						return a.second > b.second;
+					}
+					);
 
-						ImGui::PushStyleColor(ImGuiCol_Text, color_array[0][4]);
-						new_string_int("Total: %d", sum);
-						ImGui::ProgressBar(1, ImVec2(-1, 0), strings.back().c_str());
+					ImGui::PushStyleColor(ImGuiCol_Text, color_array[0][4]);
+					new_string_int("Total: %d", sum);
+					ImGui::ProgressBar(1, ImVec2(-1, 0), strings.back().c_str());
 
-						for (std::pair<uint32_t, uint16_t> pair : pairs)
-						{
-							ImGui::PushStyleColor(ImGuiCol_PlotHistogram, color_array[1][pair.first >> 16]);
-							strings.push_back(std::to_string(pair.second).append(" ").append(std::string(get_name(pair.first))));
-							ImGui::ProgressBar(pair.second / (pairs[0].second + .001f), ImVec2(-1, 0), strings.back().c_str());
-							ImGui::PopStyleColor();
-						}
+					for (std::pair<uint32_t, uint16_t> pair : pairs)
+					{
+						ImGui::PushStyleColor(ImGuiCol_PlotHistogram, color_array[1][pair.first >> 16]);
+						strings.push_back(std::to_string(pair.second).append(" ").append(std::string(get_name(pair.first))));
+						ImGui::ProgressBar(pair.second / (pairs[0].second + .001f), ImVec2(-1, 0), strings.back().c_str());
 						ImGui::PopStyleColor();
+					}
+					ImGui::PopStyleColor();
 
-						ImGui::EndTabItem();
-					}
+					ImGui::EndTabItem();
 				}
-			}
-
-			if( ImGui::BeginPopupContextWindow(NULL, 1))
-			{
-				if(selected_team == 0)
-				{
-					ImGui::Text("No data...");
-				}
-				else
-				{
-					std::lock_guard<std::mutex>lock(mtx);
-					strings.push_back(std::string(32, 0));
-					snprintf(&strings.back()[0], 32, " Current ");
-					if (ImGui::Button(strings.back().c_str()))
-					{
-						combatants_disp_idx = combatants_idx;
-						ImGui::CloseCurrentPopup();
-					}
-					int order_idx = combatants_idx - 1;
-					if(order_idx < 0)
-						order_idx = 5;
-					for(int i = 0; i < 5; i++)
-					{
-						new_string_int("History %d", i+1);
-						if(ImGui::Button(strings.back().c_str()))
-						{
-							combatants_disp_idx = order_idx;
-							ImGui::CloseCurrentPopup();
-						}
-						order_idx--;
-						if(order_idx < 0)
-							order_idx = 5;
-					}
-				}
-				ImGui::EndPopup();
 			}
 		}
-		else if (is_wvw_state == -1)
+
+		if( ImGui::BeginPopupContextWindow(NULL, 1))
 		{
-			ImGui::Text("Checking if WvW map...");
+			if(selected_team == 0)
+			{
+				ImGui::Text("No data...");
+			}
+			else
+			{
+				std::lock_guard<std::mutex>lock(mtx);
+				strings.push_back(std::string(32, 0));
+				snprintf(&strings.back()[0], 32, " Current ");
+				if (ImGui::Button(strings.back().c_str()))
+				{
+					combatants_disp_idx = combatants_idx;
+					ImGui::CloseCurrentPopup();
+				}
+				int order_idx = combatants_idx - 1;
+				if(order_idx < 0)
+					order_idx = 5;
+				for(int i = 0; i < 5; i++)
+				{
+					new_string_int("History %d", i+1);
+					if(ImGui::Button(strings.back().c_str()))
+					{
+						combatants_disp_idx = order_idx;
+						ImGui::CloseCurrentPopup();
+					}
+					order_idx--;
+					if(order_idx < 0)
+						order_idx = 5;
+				}
+			}
+			ImGui::EndPopup();
 		}
 	}
 	return 0;

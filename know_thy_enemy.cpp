@@ -197,7 +197,7 @@ bool enabled = true;
 // int is_wvw_state = -1;
 bool mod_key1 = false;
 bool mod_key2 = false;
-ImGuiWindowFlags wFlags = 0;
+ImGuiWindowFlags wFlags = ImGuiWindowFlags_NoCollapse;
 HANDLE mumbleLinkFile = NULL;
 LinkedMem* mumbleLinkedMem = nullptr;
 
@@ -298,7 +298,7 @@ uintptr_t mod_wnd(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
 	if ((get_ui_settings() >> 2) & 1)
 	{
-		wFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
+		wFlags |= ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
 		if (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) 
 		{
 			uint64_t keys = get_key_settings();
@@ -327,10 +327,10 @@ uintptr_t mod_wnd(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			}
 		}
 		if (mod_key1 && mod_key2)
-			wFlags = 0;
+			wFlags &= ~(ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
 	}
 	else
-		wFlags = 0;
+		wFlags &= ~(ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
 	return uMsg;
 }
 
@@ -341,6 +341,7 @@ typedef std::unordered_map<uint16_t, std::vector<id_umap>> team_history;
 std::unordered_map<uint16_t, bool> ids = std::unordered_map<uint16_t, bool>();
 
 team_history history = team_history();
+bool hist_bools[6] = {true, false, false, false, false, false};
 int combatants_idx = 0;
 int combatants_disp_idx = 0;
 uint16_t selected_team = 0;
@@ -470,11 +471,9 @@ uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t i
 	return 0;
 }
 
-uintptr_t options_windows_proc(const char* windowname)
+void options_end_proc(const char* windowname)
 {
-	if (windowname == nullptr)
-		ImGui::Checkbox("Know thy enemy", &enabled);
-	return 0;
+	ImGui::Checkbox("Know thy enemy", &enabled);
 }
 
 char* get_name(uint32_t id)
@@ -534,89 +533,149 @@ void new_string_int(char * format, int val)
 	snprintf(&strings.back()[0], 32, format, val);
 }
 
+void imgui_team_combatants(std::pair<uint16_t, std::vector<id_umap>> team)
+{
+	selected_team = team.first;
+	id_umap* combatants_to_display = &(history.at(selected_team)[combatants_disp_idx]);
+	uint32_t sum = 0;
+	std::vector<std::pair<uint32_t, uint16_t>> pairs = std::vector<std::pair<uint32_t, uint16_t>>();
+	{
+		for (auto itr = combatants_to_display->begin(); itr != combatants_to_display->end(); ++itr)
+		{
+			sum += (*itr).second;
+			pairs.push_back(*itr);
+		}
+	}
+
+	std::sort(pairs.begin(), pairs.end(), [=](std::pair<uint32_t, uint16_t>& a, std::pair<uint32_t, uint16_t>& b)
+	{
+		return a.second > b.second;
+	}
+	);
+
+	ImGui::PushStyleColor(ImGuiCol_Text, color_array[0][4]);
+	new_string_int("Total: %d", sum);
+	ImGui::ProgressBar(1, ImVec2(-1, 0), strings.back().c_str());
+
+	for (std::pair<uint32_t, uint16_t> pair : pairs)
+	{
+		ImGui::PushStyleColor(ImGuiCol_PlotHistogram, color_array[1][pair.first >> 16]);
+		strings.push_back(std::to_string(pair.second).append(" ").append(std::string(get_name(pair.first))));
+		ImGui::ProgressBar(pair.second / (pairs[0].second + .001f), ImVec2(-1, 0), strings.back().c_str());
+		ImGui::PopStyleColor();
+	}
+	ImGui::PopStyleColor();
+}
+
+bool bTitleBg = true;
 uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or_ooc)
 {
 	if (not_charsel_or_loading && enabled)
 	{
 		strings.clear();
-		ImGui::Begin("Know thy enemy", &enabled, wFlags);
-		if (ImGui::BeginTabBar("MyTabBar", 0))
+		bool pushed = false;
+		if (!bTitleBg)
 		{
-			for (auto team : history)
-			{
-				new_string_int("Team %d", team.first);
-				if (ImGui::BeginTabItem(strings.back().c_str()))
-				{
-					selected_team = team.first;
-					id_umap* combatants_to_display = &(history.at(selected_team)[combatants_disp_idx]);
-					uint32_t sum = 0;
-					std::vector<std::pair<uint32_t, uint16_t>> pairs = std::vector<std::pair<uint32_t, uint16_t>>();
-					{
-						std::lock_guard<std::mutex>lock(mtx);
-						for (auto itr = combatants_to_display->begin(); itr != combatants_to_display->end(); ++itr)
-						{
-							sum += (*itr).second;
-							pairs.push_back(*itr);
-						}
-					}
-
-					std::sort(pairs.begin(), pairs.end(), [=](std::pair<uint32_t, uint16_t>& a, std::pair<uint32_t, uint16_t>& b)
-					{
-						return a.second > b.second;
-					}
-					);
-
-					ImGui::PushStyleColor(ImGuiCol_Text, color_array[0][4]);
-					new_string_int("Total: %d", sum);
-					ImGui::ProgressBar(1, ImVec2(-1, 0), strings.back().c_str());
-
-					for (std::pair<uint32_t, uint16_t> pair : pairs)
-					{
-						ImGui::PushStyleColor(ImGuiCol_PlotHistogram, color_array[1][pair.first >> 16]);
-						strings.push_back(std::to_string(pair.second).append(" ").append(std::string(get_name(pair.first))));
-						ImGui::ProgressBar(pair.second / (pairs[0].second + .001f), ImVec2(-1, 0), strings.back().c_str());
-						ImGui::PopStyleColor();
-					}
-					ImGui::PopStyleColor();
-
-					ImGui::EndTabItem();
-				}
-			}
+			ImVec4 color = ImGui::GetStyleColorVec4(ImGuiCol_TitleBg); //xyzw == RGBA
+			ImGui::PushStyleColor(ImGuiCol_TitleBg, ImVec4(color.x, color.y, color.z, 0.0)); 
+			ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ImVec4(color.x, color.y, color.z, 0.0)); 
+			pushed = true;
 		}
-
-		if( ImGui::BeginPopupContextWindow(NULL, 1))
+		if (ImGui::Begin("Know thy enemy", &enabled, wFlags))
 		{
-			if(selected_team == 0)
-			{
-				ImGui::Text("No data...");
-			}
-			else
+			if (ImGui::BeginTabBar("MyTabBar", 0))
 			{
 				std::lock_guard<std::mutex>lock(mtx);
-				strings.push_back(std::string(32, 0));
-				snprintf(&strings.back()[0], 32, " Current ");
-				if (ImGui::Button(strings.back().c_str()))
+				for (auto team : history)
 				{
-					combatants_disp_idx = combatants_idx;
-					ImGui::CloseCurrentPopup();
-				}
-				int order_idx = combatants_idx - 1;
-				if(order_idx < 0)
-					order_idx = 5;
-				for(int i = 0; i < 5; i++)
-				{
-					new_string_int("History %d", i+1);
-					if(ImGui::Button(strings.back().c_str()))
+					new_string_int("Team %d", team.first);
+					if (ImGui::BeginTabItem(strings.back().c_str()))
 					{
-						combatants_disp_idx = order_idx;
-						ImGui::CloseCurrentPopup();
+						imgui_team_combatants(team);
+						ImGui::EndTabItem();
 					}
-					order_idx--;
-					if(order_idx < 0)
-						order_idx = 5;
 				}
+				ImGui::EndTabBar();
 			}
-			ImGui::EndPopup();
+
+			if( ImGui::BeginPopupContextWindow(NULL, 1))
+			{
+				if (ImGui::BeginMenu("History"))
+				{
+					if(selected_team == 0)
+					{
+						ImGui::Text("No data...");
+					}
+					else
+					{
+						ImGuiStyle style = ImGui::GetStyle();
+						ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, 0));
+						std::lock_guard<std::mutex>lock(mtx);
+						strings.push_back(std::string(32, 0));
+						snprintf(&strings.back()[0], 32, " Current ");
+						if (ImGui::Checkbox(strings.back().c_str(), &hist_bools[0]))
+						{
+							for(int i = 0; i < 6; i++)
+								hist_bools[i] = false;
+							hist_bools[0] = true;
+							combatants_disp_idx = combatants_idx;
+							ImGui::CloseCurrentPopup();
+						}
+						int order_idx = combatants_idx - 1;
+						if(order_idx < 0)
+							order_idx = 5;
+						for(int i = 0; i < 5; i++)
+						{
+							new_string_int("History %d", i+1);
+							if(ImGui::Checkbox(strings.back().c_str(), &hist_bools[i+1]))
+							{
+								for(int i = 0; i < 6; i++)
+									hist_bools[i] = false;
+								hist_bools[i+1] = true;
+								combatants_disp_idx = order_idx;
+								ImGui::CloseCurrentPopup();
+							}
+							order_idx--;
+							if(order_idx < 0)
+								order_idx = 5;
+						}
+						ImGui::PopStyleVar();
+					}
+					ImGui::EndMenu();
+				}
+				if (ImGui::BeginMenu("Style"))
+				{
+					ImGuiStyle style = ImGui::GetStyle();
+					ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, 0));
+					bool bTitlebar = (wFlags & ImGuiWindowFlags_NoTitleBar) == 0;
+					if (ImGui::Checkbox("title bar", &bTitlebar))
+					{
+						wFlags ^= ImGuiWindowFlags_NoTitleBar;
+					}
+					bool bScrollbar = (wFlags & ImGuiWindowFlags_NoScrollbar) == 0;
+					if (ImGui::Checkbox("scroll bar", &bScrollbar))
+					{
+						wFlags ^= ImGuiWindowFlags_NoScrollbar;
+					}
+					bool bBackground = (wFlags & ImGuiWindowFlags_NoBackground) == 0;
+					if (ImGui::Checkbox("background", &bBackground))
+					{
+						wFlags ^= ImGuiWindowFlags_NoBackground;
+					}
+					if (ImGui::Checkbox("title bar background", &bTitleBg))
+					{
+					}
+					ImGui::PopStyleVar();
+					ImGui::EndMenu();
+				}
+				ImGui::EndPopup();
+			}
+		}
+		ImGui::End();
+		if (pushed)
+		{
+			ImGui::PopStyleColor();
+			ImGui::PopStyleColor();
 		}
 	}
 	return 0;
@@ -679,7 +738,7 @@ arcdps_exports* mod_init() {
 	arc_exports.imgui = imgui_proc;
 	arc_exports.wnd_nofilter = mod_wnd;
 	arc_exports.combat = mod_combat;
-	arc_exports.options_windows = options_windows_proc;
+	arc_exports.options_end = options_end_proc;
 	//arc_exports.size = (uintptr_t)"error message if you decide to not load, sig must be 0";
 	init_colors();
 	init_kte_settings();

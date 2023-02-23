@@ -194,6 +194,8 @@ enum EMapType
 /* proto/globals */
 uint32_t cbtcount = 0;
 bool enabled = true;
+bool bTitleBg = true;
+
 // int is_wvw_state = -1;
 bool mod_key1 = false;
 bool mod_key2 = false;
@@ -476,6 +478,25 @@ uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t i
 void options_end_proc(const char* windowname)
 {
 	ImGui::Checkbox("Know thy enemy##1cb", &enabled);
+	ImGui::Separator();
+	if (ImGui::Button("Reset settings"))
+	{
+		enabled = true;
+		wFlags = 0;
+		bTitleBg = true;
+		std::wstring path = std::wstring(get_settings_path());
+		std::string cpath(path.begin(), path.end());
+		cpath = cpath.substr(0, cpath.find_last_of("\\")+1);
+		cpath.append("know_thy_enemy_settings.txt");
+		std::fstream file(cpath.c_str(), std::fstream::out | std::fstream::trunc);
+		if (file.good())
+		{
+			file << "enabled=" << (enabled ? '1' : '0') << "\n";
+			file << "wFlags=" << std::to_string(wFlags) << "\n";
+			file << "titleTrans=" << (bTitleBg ? '1' : '0') << "\n";
+		}
+		file.close();
+	}
 }
 
 void options_windows_proc(const char* windowname)
@@ -575,7 +596,6 @@ void imgui_team_combatants(std::pair<uint16_t, std::vector<id_umap>> team)
 	ImGui::PopStyleColor();
 }
 
-bool bTitleBg = true;
 uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or_ooc)
 {
 	if (not_charsel_or_loading && enabled)

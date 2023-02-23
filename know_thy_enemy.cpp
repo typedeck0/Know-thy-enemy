@@ -197,7 +197,7 @@ bool enabled = true;
 // int is_wvw_state = -1;
 bool mod_key1 = false;
 bool mod_key2 = false;
-ImGuiWindowFlags wFlags = ImGuiWindowFlags_NoCollapse;
+ImGuiWindowFlags wFlags = 0;
 HANDLE mumbleLinkFile = NULL;
 LinkedMem* mumbleLinkedMem = nullptr;
 

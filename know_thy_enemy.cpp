@@ -475,7 +475,7 @@ uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t i
 
 void options_end_proc(const char* windowname)
 {
-	ImGui::Checkbox("Know thy enemy", &enabled);
+	ImGui::Checkbox("Know thy enemy##1cb", &enabled);
 }
 
 void options_windows_proc(const char* windowname)
@@ -724,7 +724,7 @@ void init_kte_settings()
 			if (key.compare("enabled") == 0)
 			{
 				char val = line.substr(sep+1, line.size() - key.size() - 1)[0];
-				enabled = val == '1';
+				enabled = (val == '1');
 			}
 			else if(key.compare("wFlags") == 0)
 			{
@@ -733,7 +733,7 @@ void init_kte_settings()
 			else if (key.compare("titleTrans") == 0)
 			{
 				char val = line.substr(sep+1, line.size() - key.size() - 1)[0];
-				bTitleBg = val == '1';
+				bTitleBg = (val == '1');
 			}
 
 		}
@@ -753,7 +753,7 @@ arcdps_exports* mod_init() {
 	arc_exports.imguivers = IMGUI_VERSION_NUM;
 	arc_exports.size = sizeof(arcdps_exports);
 	arc_exports.out_name = "Know thy enemy";
-	arc_exports.out_build = "1.5";
+	arc_exports.out_build = "2.3";
 	arc_exports.imgui = imgui_proc;
 	arc_exports.wnd_nofilter = mod_wnd;
 	arc_exports.combat = mod_combat;

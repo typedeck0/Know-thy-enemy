@@ -345,7 +345,7 @@ typedef std::unordered_map<uint16_t, std::vector<id_umap>> team_history;
 std::unordered_map<uint16_t, bool> ids = std::unordered_map<uint16_t, bool>();
 
 team_history history = team_history();
-bool hist_bools[6] = {true, false, false, false, false, false};
+int history_radio_state = 0;
 int combatants_idx = 0;
 int combatants_disp_idx = 0;
 uint16_t selected_team = 0;
@@ -457,6 +457,7 @@ uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t i
 						}
 						ids.clear();
 						combatants_disp_idx = combatants_idx;
+						history_radio_state = 0;
 						return 0;
 					}
 				}
@@ -641,11 +642,9 @@ uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or
 						std::lock_guard<std::mutex>lock(mtx);
 						strings.push_back(std::string(32, 0));
 						snprintf(&strings.back()[0], 32, " Current ");
-						if (ImGui::Checkbox(strings.back().c_str(), &hist_bools[0]))
+						if (ImGui::RadioButton(strings.back().c_str(), &history_radio_state, 0))
 						{
-							for(int i = 0; i < 6; i++)
-								hist_bools[i] = false;
-							hist_bools[0] = true;
+							history_radio_state = 0;
 							combatants_disp_idx = combatants_idx;
 							ImGui::CloseCurrentPopup();
 						}
@@ -655,11 +654,9 @@ uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or
 						for(int i = 0; i < 5; i++)
 						{
 							new_string_int("History %d", i+1);
-							if(ImGui::Checkbox(strings.back().c_str(), &hist_bools[i+1]))
+							if(ImGui::RadioButton(strings.back().c_str(), &history_radio_state, i+1))
 							{
-								for(int i = 0; i < 6; i++)
-									hist_bools[i] = false;
-								hist_bools[i+1] = true;
+								history_radio_state = i+1;
 								combatants_disp_idx = order_idx;
 								ImGui::CloseCurrentPopup();
 							}

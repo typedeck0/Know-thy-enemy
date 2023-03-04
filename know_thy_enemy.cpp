@@ -597,6 +597,25 @@ void imgui_team_combatants(std::pair<uint16_t, std::vector<id_umap>> team)
 	ImGui::PopStyleColor();
 }
 
+void add_new_team_name(uint16_t team_id)
+{
+	switch (team_id)
+	{
+	case 432:
+		strings.push_back("Blue");
+		break;
+	case 2739:
+		strings.push_back("Green");
+		break;
+	case 705:
+		strings.push_back("Red");
+		break;
+	default:
+		new_string_int("Team %d", team_id);
+		break;
+	}
+}
+
 uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or_ooc)
 {
 	if (not_charsel_or_loading && enabled)
@@ -617,7 +636,7 @@ uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or
 				std::lock_guard<std::mutex>lock(mtx);
 				for (auto team : history)
 				{
-					new_string_int("Team %d", team.first);
+					add_new_team_name(team.first);
 					if (ImGui::BeginTabItem(strings.back().c_str()))
 					{
 						imgui_team_combatants(team);

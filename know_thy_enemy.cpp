@@ -435,6 +435,8 @@ void record_agent(ag* agent, uint16_t instid)
 // 	return result;
 // }
 
+bool log_ended = false;
+
 /* combat callback -- may be called asynchronously, use id param to keep track of order, first event id will be 2. return ignored */
 /* at least one participant will be party/squad or minion of, or a buff applied by squad in the case of buff remove. not all statechanges present, see evtc statechange enum */
 uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t id, uint64_t revision) 
@@ -444,32 +446,36 @@ uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t i
 		if (ev)
 		{
 			if (ev->is_statechange == CBTS_LOGEND)
-			{
-				std::lock_guard<std::mutex>lock(mtx);
-				for (auto team : history)
-				{
-					if (!team.second[combatants_idx].empty())
-					{
-						combatants_idx = (combatants_idx + 1) % 6;
-						for (auto clear_team : history)
-						{
-							history.at(clear_team.first)[combatants_idx].clear();
-						}
-						ids.clear();
-						combatants_disp_idx = combatants_idx;
-						history_radio_state = 0;
-						return 0;
-					}
-				}
-			}
+				log_ended = true;
 			if (ev->is_activation || ev->is_buffremove || ev->is_statechange || ev->buff || src->elite == 0xFFFFFFFF || dst->elite == 0xFFFFFFFF || src->prof == 0 || dst->prof == 0)
 				return 0;
 			if (src && dst)
 			{
+				if (log_ended && (src->name == nullptr || dst->name == nullptr))
+				{
+					std::lock_guard<std::mutex>lock(mtx);
+					combatants_idx = (combatants_idx + 1) % 6;
+					for (auto team : history)
+					{
+						if (!team.second[combatants_idx].empty())
+						{
+							history.at(team.first)[combatants_idx].clear();
+						}
+						ids.clear();
+						combatants_disp_idx = combatants_idx;
+						history_radio_state = 0;
+					}
+					log_ended = false;
+				}
+
 				if (src->name == nullptr)
+				{
 					record_agent(src, ev->src_instid);
+				}
 				else if (dst->name == nullptr)
+				{
 					record_agent(dst, ev->dst_instid);
+				}
 			}
 		}
 	}
@@ -658,7 +664,6 @@ uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or
 					{
 						ImGuiStyle style = ImGui::GetStyle();
 						ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, 0));
-						std::lock_guard<std::mutex>lock(mtx);
 						strings.push_back(std::string(32, 0));
 						snprintf(&strings.back()[0], 32, " Current ");
 						if (ImGui::RadioButton(strings.back().c_str(), &history_radio_state, 0))
@@ -789,7 +794,7 @@ arcdps_exports* mod_init() {
 	arc_exports.imguivers = IMGUI_VERSION_NUM;
 	arc_exports.size = sizeof(arcdps_exports);
 	arc_exports.out_name = "Know thy enemy";
-	arc_exports.out_build = "2.4";
+	arc_exports.out_build = "2.5.1";
 	arc_exports.imgui = imgui_proc;
 	arc_exports.wnd_nofilter = mod_wnd;
 	arc_exports.combat = mod_combat;

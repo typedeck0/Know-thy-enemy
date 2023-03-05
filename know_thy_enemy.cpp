@@ -445,7 +445,7 @@ uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t i
 	{
 		if (ev)
 		{
-			if (ev->is_statechange == CBTS_LOGEND)
+			if (selected_team != 0 && ev->is_statechange == CBTS_LOGEND)
 				log_ended = true;
 			if (ev->is_activation || ev->is_buffremove || ev->is_statechange || ev->buff || src->elite == 0xFFFFFFFF || dst->elite == 0xFFFFFFFF || src->prof == 0 || dst->prof == 0)
 				return 0;

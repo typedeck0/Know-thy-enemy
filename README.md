@@ -5,12 +5,9 @@ Tired of commanders saying "They're *twice* our size!"? Well now you can put a n
 
 Counts the amount and type of player enemies (that your squad hits or is hit by) in an arcdps fight instance (resets when arcdps does).
 
-![image](https://user-images.githubusercontent.com/113395677/189776525-a1103ead-7313-458a-83de-9befa86c714b.png)  ![image](https://user-images.githubusercontent.com/113395677/220204710-34c9a91f-926f-4593-943f-ce839f188074.png)
+![image](https://user-images.githubusercontent.com/113395677/222940654-ff55d512-85e5-42dc-a289-9075641ce6be.png)
 
-
-
-
-![image](https://user-images.githubusercontent.com/113395677/189776559-de7d1981-8bff-4dd7-8f07-3062b602bf29.png)
+![image](https://user-images.githubusercontent.com/113395677/222940678-08786dca-7a06-4b8d-8e75-18ba340e4422.png)
 
 ## Build
 Clone. Download [ImGui 1.8](https://github.com/ocornut/imgui/tree/v1.80). Extract the Imgui to the cloned directory. Run the bat file. The dll will be in the out directory.

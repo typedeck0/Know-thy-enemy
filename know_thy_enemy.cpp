@@ -191,17 +191,25 @@ enum EMapType
 	//WvW = 19                  // ended up getting removed, hinting at new wvw map?
 };
 
+enum HackedMapIds
+{
+	WVW_LOUNGE = 0x0523,
+	WVW_EBG    = 0x0026,
+	WVW_GBL    = 0x005F,
+	WVW_BBL    = 0x0060,
+	WVW_RBL    = 0x044B
+};
+
 /* proto/globals */
 uint32_t cbtcount = 0;
 bool enabled = true;
+bool toShow = false;
 bool bTitleBg = true;
 
 // int is_wvw_state = -1;
 bool mod_key1 = false;
 bool mod_key2 = false;
 ImGuiWindowFlags wFlags = 0;
-HANDLE mumbleLinkFile = NULL;
-LinkedMem* mumbleLinkedMem = nullptr;
 
 
 arcdps_exports arc_exports;
@@ -222,10 +230,12 @@ void save_kte_settings();
 void* filelog;
 void* arclog;
 void* arccolors;
-void* arccontext_0x20;
+const char*(*arccontext_0x510)();
 wchar_t*(*get_settings_path)();
 uint64_t(*get_ui_settings)();
 uint64_t(*get_key_settings)();
+
+const char* arccontext = nullptr;
 
 /* dll main -- winapi */
 BOOL APIENTRY DllMain(HANDLE hModule, DWORD ulReasonForCall, LPVOID lpReserved) {
@@ -270,7 +280,8 @@ extern "C" __declspec(dllexport) void* get_init_addr(char* arcversion, ImGuiCont
 	// id3dptr is IDirect3D9* if d3dversion==9, or IDXGISwapChain* if d3dversion==11
 	arcvers = arcversion;
 	get_settings_path = (wchar_t*(*)())GetProcAddress((HMODULE)arcdll, "e0");
-	arccontext_0x20 = (void*)GetProcAddress((HMODULE)arcdll, "e2");
+	arccontext_0x510 = (const char*(*)())GetProcAddress((HMODULE)arcdll, "e1");
+	arccontext = arccontext_0x510()-0x510;
 	arclog = (void*)GetProcAddress((HMODULE)arcdll, "e8");
 	arccolors = (void*)GetProcAddress((HMODULE)arcdll, "e5");
 	get_ui_settings = (uint64_t(*)())GetProcAddress((HMODULE)arcdll, "e6");
@@ -290,10 +301,6 @@ extern "C" __declspec(dllexport) void* get_release_addr() {
 uintptr_t mod_release() {
 	FreeConsole();
 	save_kte_settings();
-	if (mumbleLinkedMem != nullptr)
-		UnmapViewOfFile(mumbleLinkedMem);
-	if (mumbleLinkFile != NULL)
-		CloseHandle(mumbleLinkFile);
 	return 0;
 }
 
@@ -350,7 +357,6 @@ int combatants_idx = 0;
 int combatants_disp_idx = 0;
 uint16_t selected_team = 0;
 
-
 void record_agent(ag* agent, uint16_t instid)
 {
 	if (agent->team == 0)
@@ -383,57 +389,20 @@ void record_agent(ag* agent, uint16_t instid)
 	return;
 }
 
-// int check_wvw()
-// {
-// 	int result = 0;
-
-// 	if (mumbleLinkFile == NULL)
-// 	{
-// 		mumbleLinkFile = CreateFileMapping(
-// 					INVALID_HANDLE_VALUE,    // use paging file
-// 					NULL,                    // default security
-// 					PAGE_READWRITE,          // read/write access
-// 					0,                       // maximum object size (high-order DWORD)
-// 					sizeof(LinkedMem) + 256 + 4096,                // maximum object size (low-order DWORD)
-// 					TEXT("MumbleLink"));                 // name of mapping object
-// 	}
-// 	if (mumbleLinkFile == NULL)
-// 	{
-// 		return -1;
-// 	}
-
-// 	if (mumbleLinkedMem == nullptr)
-// 		mumbleLinkedMem = (LinkedMem*) MapViewOfFile(mumbleLinkFile, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(LinkedMem)+256+4096);
-
-// 	if (mumbleLinkedMem == NULL)
-// 	{
-// 		CloseHandle(mumbleLinkFile);
-// 		return -1;
-// 	}
-
-// 	while (!mumbleLinkedMem->uiTick)
-// 		Sleep(100);
-
-// 	MumbleContext* context = (MumbleContext*)(&mumbleLinkedMem->context[0]);
-
-// 	switch (context->mapType)
-// 	{
-// 	case EMapType::WvW_BBL:
-// 	case EMapType::WvW_EBG:
-// 	case EMapType::WvW_EdgeOfTheMists:
-// 	case EMapType::WvW_GBL:
-// 	case EMapType::WvW_Lounge:
-// 	case EMapType::WvW_ObsidianSanctum:
-// 	case EMapType::WvW_RBL:
-// 		result = 1;
-// 		break;
-// 	default:
-// 		result = 0;
-// 		break;
-// 	}
-
-// 	return result;
-// }
+bool isWvw()
+{
+	unsigned short map_id = (arccontext[0x701] << 8) | arccontext[0x700];
+	switch (map_id)
+	{
+	case HackedMapIds::WVW_BBL:
+	case HackedMapIds::WVW_EBG:
+	case HackedMapIds::WVW_GBL:
+	case HackedMapIds::WVW_RBL:
+		return true;
+	default:
+		return false;
+	}
+}
 
 bool log_ended = false;
 
@@ -441,7 +410,20 @@ bool log_ended = false;
 /* at least one participant will be party/squad or minion of, or a buff applied by squad in the case of buff remove. not all statechanges present, see evtc statechange enum */
 uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t id, uint64_t revision) 
 {
-	if(enabled)
+	if (!ev)
+	{
+		if (!src->elite) 
+		{
+			if (src->prof) 
+			{
+				if (dst->self)
+				{
+					toShow = isWvw();
+				}
+			}
+		}
+	}
+	if(enabled && toShow)
 	{
 		if (ev)
 		{
@@ -485,6 +467,7 @@ uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t i
 void options_end_proc(const char* windowname)
 {
 	ImGui::Checkbox("Know thy enemy##1cb", &enabled);
+	ImGui::NewLine();
 	ImGui::Separator();
 	if (ImGui::Button("Reset settings"))
 	{
@@ -624,7 +607,7 @@ void add_new_team_name(uint16_t team_id)
 
 uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or_ooc)
 {
-	if (not_charsel_or_loading && enabled)
+	if (not_charsel_or_loading && enabled && toShow)
 	{
 		strings.clear();
 		bool pushed = false;

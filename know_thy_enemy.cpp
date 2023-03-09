@@ -398,6 +398,7 @@ bool isWvw()
 	case HackedMapIds::WVW_EBG:
 	case HackedMapIds::WVW_GBL:
 	case HackedMapIds::WVW_RBL:
+	case HackedMapIds::WVW_LOUNGE:
 		return true;
 	default:
 		return false;

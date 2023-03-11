@@ -482,10 +482,9 @@ uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const cha
 					cur_history_idx = (cur_history_idx + 1) % MAX_HISTORY_SIZE;
 					for (auto& team : team_history_class_count)
 					{
-						auto& history = team.second[cur_history_idx];
-						if (history[DATA_ARRAY::TOTAL] != 0)
+						if (team.second[cur_history_idx][DATA_ARRAY::TOTAL] != 0)
 						{
-							memset(&history[0], 0, DATA_ARRAY::LENGTH);
+							memset(&team.second[cur_history_idx][0], 0, DATA_ARRAY::LENGTH * sizeof(uint32_t));
 						}
 						ids.clear();
 						hit_ids.clear();

@@ -413,7 +413,7 @@ void record_agent(const ag* agent, const uint16_t instid, const uint8_t iHit)
 	{
 		if (hit_ids.find(instid) == hit_ids.end())
 		{
-			team->second.at(cur_history_idx)[DATA_ARRAY::HIT_TOTAL] += iHit;
+			team->second.at(cur_history_idx)[DATA_ARRAY::HIT_TOTAL]++;
 			hit_ids.emplace(instid);
 		}
 	}

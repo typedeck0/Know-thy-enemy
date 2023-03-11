@@ -11,8 +11,8 @@
 #include <cstdio>
 #include <time.h>
 #include <fstream>
-
-std::mutex mtx;
+#include <unordered_set>
+#include <deque>
 
 /* combat state change */
 enum cbtstatechange {
@@ -74,7 +74,7 @@ enum iff {
 };
 
 /* arcdps export table */
-typedef struct arcdps_exports {
+struct arcdps_exports {
 	uintptr_t size; /* size of exports table */
 	uint32_t sig; /* pick a number between 0 and uint32_t max that isn't used by other modules */
 	uint32_t imguivers; /* set this to IMGUI_VERSION_NUM. if you don't use imgui, 18000 (as of 2021-02-02) */
@@ -87,7 +87,7 @@ typedef struct arcdps_exports {
 	void* combat_local;  /* combat event callback like area but from chat log, fn(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t id, uint64_t revision) */
 	void* wnd_filter; /* wndproc callback like wnd_nofilter above, input filered using modifiers */
 	void* options_windows; /* called once per 'window' option checkbox, with null at the end, non-zero return disables arcdps drawing that checkbox, fn(char* windowname) */
-} arcdps_exports;
+};
 
 /* combat event - see evtc docs for details, revision param in combat cb is equivalent of revision byte header */
 typedef struct cbtevent {
@@ -130,68 +130,7 @@ typedef struct ag {
 	uint16_t team; /* sep21+ */
 } ag;
 
-typedef struct LinkedMem {
-    uint32_t uiVersion;
-    uint32_t uiTick;
-    float fAvatarPosition[3];
-    float fAvatarFront[3];
-    float fAvatarTop[3];
-    wchar_t name[256];
-    float fCameraPosition[3];
-    float fCameraFront[3];
-    float fCameraTop[3];
-    wchar_t identity[256];
-    uint32_t context_len; // Despite the actual context containing more data, this value is currently 48. See "context" section below.
-    unsigned char context[256];
-    wchar_t description[2048];
-} LinkedMem;
-
-typedef struct MumbleContext {
-    unsigned char serverAddress[28]; // contains sockaddr_in or sockaddr_in6
-    uint32_t mapId;
-    uint32_t mapType;
-    uint32_t shardId;
-    uint32_t instance;
-    uint32_t buildId;
-    // Additional data beyond the <context_len> bytes the game instructs Mumble to use to distinguish between instances.
-    uint32_t uiState; // Bitmask: Bit 1 = IsMapOpen, Bit 2 = IsCompassTopRight, Bit 3 = DoesCompassHaveRotationEnabled, Bit 4 = Game has focus, Bit 5 = Is in Competitive game mode, Bit 6 = Textbox has focus, Bit 7 = Is in Combat
-    uint16_t compassWidth; // pixels
-    uint16_t compassHeight; // pixels
-    float compassRotation; // radians
-    float playerX; // continentCoords
-    float playerY; // continentCoords
-    float mapCenterX; // continentCoords
-    float mapCenterY; // continentCoords
-    float mapScale;
-    uint32_t processId;
-    uint8_t mountIndex;
-} MumbleContext;
-
-enum EMapType
-{
-	AutoRedirect = 0,
-	CharacterCreation = 1,
-	PvP = 2,
-	GvG = 3,
-	Instance = 4,
-	PvE = 5,
-	Tournament = 6,
-	Tutorial = 7,
-	UserTournament = 8,
-	WvW_EBG = 9,
-	WvW_BBL = 10,
-	WvW_GBL = 11,
-	WvW_RBL = 12,
-	WVW_REWARD = 13,            // SCRAPPED
-	WvW_ObsidianSanctum = 14,
-	WvW_EdgeOfTheMists = 15,
-	PvE_Mini = 16,              // Mini maps like Mistlock Sanctuary, Aerodrome, etc.
-	BIG_BATTLE = 17,            // SCRAPPED
-	WvW_Lounge = 18,
-	//WvW = 19                  // ended up getting removed, hinting at new wvw map?
-};
-
-enum HackedMapIds
+enum class HackedMapIds
 {
 	WVW_LOUNGE = 0x0523,
 	WVW_EBG    = 0x0026,
@@ -200,11 +139,63 @@ enum HackedMapIds
 	WVW_RBL    = 0x044B
 };
 
+namespace DATA_ARRAY
+{
+enum LAYOUT : uint8_t
+{
+	Guardian,
+	Warrior,
+	Engineer,
+	Ranger,
+	Thief,
+	Elementalist,
+	Mesmer,
+	Necromancer,
+	Revenant,
+	Druid,
+	Daredevil,
+	Berserker,
+	Dragonhunter,
+	Reaper,
+	Chronomancer,
+	Scrapper,
+	Tempest,
+	Herald,
+	Soulbeast,
+	Weaver,
+	Holosmith,
+	Deadeye,
+	Mirage,
+	Scourge,
+	Spellbreaker,
+	Firebrand,
+	Renegade,
+	Harbinger,
+	Willbender,
+	Virtuoso,
+	Catalyst,
+	Bladesworn,
+	Vindicator,
+	Mechanist,
+	Specter,
+	Untamed,
+	Unknown,
+	HIT_TOTAL,
+	TOTAL,
+	LENGTH
+};
+}
+
+std::mutex mtx;
+
 /* proto/globals */
-uint32_t cbtcount = 0;
 bool enabled = true;
 bool toShow = false;
 bool bTitleBg = true;
+
+const uint8_t MAX_HISTORY_SIZE = 6;
+const uint8_t MAX_STRING_SIZE = 32;
+const uint8_t MAX_TOTAL_STRINGS = 64;
 
 // int is_wvw_state = -1;
 bool mod_key1 = false;
@@ -212,24 +203,13 @@ bool mod_key2 = false;
 ImGuiWindowFlags wFlags = 0;
 
 
-arcdps_exports arc_exports;
 char* arcvers;
-void dll_init(HANDLE hModule);
-void dll_exit();
 extern "C" __declspec(dllexport) void* get_init_addr(char* arcversion, ImGuiContext* imguictx, void* id3dptr, HANDLE arcdll, void* mallocfn, void* freefn, uint32_t d3dversion);
 extern "C" __declspec(dllexport) void* get_release_addr();
-arcdps_exports* mod_init();
-uintptr_t mod_release();
-uintptr_t mod_wnd(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t id, uint64_t revision);
-void log_file(char* str);
-void log_arc(char* str);
-void save_kte_settings();
 
 /* arcdps exports */
-void* filelog;
-void* arclog;
-void* arccolors;
+size_t(*arclog)(char*);
+void(*arccolors)(ImVec4**);
 const char*(*arccontext_0x510)();
 wchar_t*(*get_settings_path)();
 uint64_t(*get_ui_settings)();
@@ -237,8 +217,18 @@ uint64_t(*get_key_settings)();
 
 const char* arccontext = nullptr;
 
+/* dll attach -- from winapi */
+void dll_init(const HANDLE hModule) {
+	return;
+}
+
+/* dll detach -- from winapi */
+void dll_exit() {
+	return;
+}
+
 /* dll main -- winapi */
-BOOL APIENTRY DllMain(HANDLE hModule, DWORD ulReasonForCall, LPVOID lpReserved) {
+BOOL APIENTRY DllMain(const HANDLE hModule, const DWORD ulReasonForCall, const LPVOID lpReserved) {
 	switch (ulReasonForCall) {
 	case DLL_PROCESS_ATTACH: dll_init(hModule); break;
 	case DLL_PROCESS_DETACH: dll_exit(); break;
@@ -249,259 +239,12 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD ulReasonForCall, LPVOID lpReserved) 
 	return 1;
 }
 
-/* log to extensions tab in arcdps log window, thread/async safe */
-void log_arc(char* str) {
-	size_t(*log)(char*) = (size_t(*)(char*))arclog;
-	if (log) (*log)(str);
-	return;
-}
-
-ImVec4* color_array[5];
-void init_colors()
+const char* get_prof_elite_name(const uint16_t prof_elite)
 {
-	void(*colors)(ImVec4**) = (void(*)(ImVec4**))arccolors;
-	if (colors) 
-		(*colors)(color_array);
-	return;
-}
-
-/* dll attach -- from winapi */
-void dll_init(HANDLE hModule) {
-	return;
-}
-
-/* dll detach -- from winapi */
-void dll_exit() {
-	return;
-}
-
-/* export -- arcdps looks for this exported function and calls the address it returns on client load */
-extern "C" __declspec(dllexport) void* get_init_addr(char* arcversion, ImGuiContext* imguictx, void* id3dptr, HANDLE arcdll, void* mallocfn, void* freefn, uint32_t d3dversion) {
-	// id3dptr is IDirect3D9* if d3dversion==9, or IDXGISwapChain* if d3dversion==11
-	arcvers = arcversion;
-	get_settings_path = (wchar_t*(*)())GetProcAddress((HMODULE)arcdll, "e0");
-	arccontext_0x510 = (const char*(*)())GetProcAddress((HMODULE)arcdll, "e1");
-	arccontext = arccontext_0x510()-0x510;
-	arclog = (void*)GetProcAddress((HMODULE)arcdll, "e8");
-	arccolors = (void*)GetProcAddress((HMODULE)arcdll, "e5");
-	get_ui_settings = (uint64_t(*)())GetProcAddress((HMODULE)arcdll, "e6");
-	get_key_settings = (uint64_t(*)())GetProcAddress((HMODULE)arcdll, "e7");
-	ImGui::SetCurrentContext((ImGuiContext*)imguictx);
-	ImGui::SetAllocatorFunctions((void *(*)(size_t, void*))mallocfn, (void (*)(void*, void*))freefn); // on imgui 1.80+
-	return mod_init;
-}
-
-/* export -- arcdps looks for this exported function and calls the address it returns on client exit */
-extern "C" __declspec(dllexport) void* get_release_addr() {
-	arcvers = 0;
-	return mod_release;
-}
-
-/* release mod -- return ignored */
-uintptr_t mod_release() {
-	FreeConsole();
-	save_kte_settings();
-	return 0;
-}
-
-/* window callback -- return is assigned to umsg (return zero to not be processed by arcdps or game) */
-uintptr_t mod_wnd(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
-{
-	if ((get_ui_settings() >> 2) & 1)
-	{
-		wFlags |= ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
-		if (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) 
-		{
-			uint64_t keys = get_key_settings();
-			uint16_t* mod_key = (uint16_t*)&keys;
-			if (wParam == *mod_key)
-			{
-				mod_key1 = true;
-			}
-			if (wParam == *(mod_key+1))
-			{
-				mod_key2 = true;
-			}
-		}
-
-		if (uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP) 
-		{
-			uint64_t keys = get_key_settings();
-			uint16_t* mod_key = (uint16_t*)&keys;
-			if (wParam == *mod_key)
-			{
-				mod_key1 = false;
-			}
-			if (wParam == *(mod_key+1))
-			{
-				mod_key2 = false;
-			}
-		}
-		if (mod_key1 && mod_key2)
-			wFlags &= ~(ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
-	}
-	else
-		wFlags &= ~(ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
-	return uMsg;
-}
-
-
-typedef std::unordered_map<uint32_t, uint16_t> id_umap;
-typedef std::unordered_map<uint16_t, std::vector<id_umap>> team_history;
-
-std::unordered_map<uint16_t, bool> ids = std::unordered_map<uint16_t, bool>();
-
-team_history history = team_history();
-int history_radio_state = 0;
-int combatants_idx = 0;
-int combatants_disp_idx = 0;
-uint16_t selected_team = 0;
-
-void record_agent(ag* agent, uint16_t instid)
-{
-	if (agent->team == 0)
-		return;
-	std::lock_guard<std::mutex>lock(mtx);
-	if (history.find(agent->team) == history.end())
-	{
-		history.emplace(agent->team, std::vector<id_umap>());
-		for(int i = 0; i < 6; i++)
-		{
-			history.at(agent->team).push_back(id_umap());
-		}
-	}
-
-	if (ids.find(instid) != ids.end())
-		return;
-	ids.emplace(instid, true);
-
-	uint32_t id = ((agent->prof & 0xFFFF) << 16) | (agent->elite & 0xFFFF);
-
-	if (history.at(agent->team)[combatants_idx].find(id) != history.at(agent->team)[combatants_idx].end())
-	{
-		history.at(agent->team)[combatants_idx].at(id)++;
-	}
-	else
-	{
-		history.at(agent->team)[combatants_idx].emplace(id, 1);
-	}
-
-	return;
-}
-
-bool isWvw()
-{
-	unsigned short map_id = (arccontext[0x701] << 8) | arccontext[0x700];
-	switch (map_id)
-	{
-	case HackedMapIds::WVW_BBL:
-	case HackedMapIds::WVW_EBG:
-	case HackedMapIds::WVW_GBL:
-	case HackedMapIds::WVW_RBL:
-	case HackedMapIds::WVW_LOUNGE:
-		return true;
-	default:
-		return false;
-	}
-}
-
-bool log_ended = false;
-
-/* combat callback -- may be called asynchronously, use id param to keep track of order, first event id will be 2. return ignored */
-/* at least one participant will be party/squad or minion of, or a buff applied by squad in the case of buff remove. not all statechanges present, see evtc statechange enum */
-uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t id, uint64_t revision) 
-{
-	if (!ev)
-	{
-		if (!src->elite) 
-		{
-			if (src->prof) 
-			{
-				if (dst->self)
-				{
-					toShow = isWvw();
-				}
-			}
-		}
-	}
-	if(enabled && toShow)
-	{
-		if (ev)
-		{
-			if (selected_team != 0 && ev->is_statechange == CBTS_LOGEND)
-				log_ended = true;
-			if (ev->is_activation || ev->is_buffremove || ev->is_statechange || ev->buff || src->elite == 0xFFFFFFFF || dst->elite == 0xFFFFFFFF || src->prof == 0 || dst->prof == 0)
-				return 0;
-			if (src && dst)
-			{
-				if (log_ended && (src->name == nullptr || dst->name == nullptr))
-				{
-					std::lock_guard<std::mutex>lock(mtx);
-					combatants_idx = (combatants_idx + 1) % 6;
-					for (auto team : history)
-					{
-						if (!team.second[combatants_idx].empty())
-						{
-							history.at(team.first)[combatants_idx].clear();
-						}
-						ids.clear();
-						combatants_disp_idx = combatants_idx;
-						history_radio_state = 0;
-					}
-					log_ended = false;
-				}
-
-				if (src->name == nullptr)
-				{
-					record_agent(src, ev->src_instid);
-				}
-				else if (dst->name == nullptr)
-				{
-					record_agent(dst, ev->dst_instid);
-				}
-			}
-		}
-	}
-	return 0;
-}
-
-void options_end_proc(const char* windowname)
-{
-	ImGui::Checkbox("Know thy enemy##1cb", &enabled);
-	ImGui::NewLine();
-	ImGui::Separator();
-	if (ImGui::Button("Reset settings"))
-	{
-		enabled = true;
-		wFlags = 0;
-		bTitleBg = true;
-		std::wstring path = std::wstring(get_settings_path());
-		std::string cpath(path.begin(), path.end());
-		cpath = cpath.substr(0, cpath.find_last_of("\\")+1);
-		cpath.append("know_thy_enemy_settings.txt");
-		std::fstream file(cpath.c_str(), std::fstream::out | std::fstream::trunc);
-		if (file.good())
-		{
-			file << "enabled=" << (enabled ? '1' : '0') << "\n";
-			file << "wFlags=" << std::to_string(wFlags) << "\n";
-			file << "titleTrans=" << (bTitleBg ? '1' : '0') << "\n";
-		}
-		file.close();
-	}
-}
-
-void options_windows_proc(const char* windowname)
-{
-	// log_arc((char*)windowname);
-}
-
-
-char* get_name(uint32_t id)
-{
-	switch (id & 0xFFFF)
+	switch (prof_elite & 0xFF)
 	{
 	case 0:
-		switch (id >> 16)
+		switch (prof_elite >> 8)
 		{
 		case 1: return "Guardian";
 		case 2: return "Warrior";
@@ -545,91 +288,400 @@ char* get_name(uint32_t id)
 	}
 }
 
-std::vector<std::string> strings = std::vector<std::string>();
-
-void new_string_int(char * format, int val)
+uint8_t get_prof_elite_idx(const uint16_t prof_elite)
 {
-	strings.push_back(std::string(32, 0));
-	snprintf(&strings.back()[0], 32, format, val);
+	switch (prof_elite & 0xFF)
+	{
+	case 0:
+		switch (prof_elite >> 8)
+		{
+		case 1: return DATA_ARRAY::Guardian;
+		case 2: return DATA_ARRAY::Warrior;
+		case 3: return DATA_ARRAY::Engineer;
+		case 4: return DATA_ARRAY::Ranger;
+		case 5: return DATA_ARRAY::Thief;
+		case 6: return DATA_ARRAY::Elementalist;
+		case 7: return DATA_ARRAY::Mesmer;
+		case 8: return DATA_ARRAY::Necromancer;
+		case 9: return DATA_ARRAY::Revenant;
+		default: return DATA_ARRAY::Unknown;
+		}
+	case 5:	 return DATA_ARRAY::Druid;
+	case 7:	 return DATA_ARRAY::Daredevil;
+	case 18: return DATA_ARRAY::Berserker;
+	case 27: return DATA_ARRAY::Dragonhunter;
+	case 34: return DATA_ARRAY::Reaper;
+	case 40: return DATA_ARRAY::Chronomancer;
+	case 43: return DATA_ARRAY::Scrapper;
+	case 48: return DATA_ARRAY::Tempest;
+	case 52: return DATA_ARRAY::Herald;
+	case 55: return DATA_ARRAY::Soulbeast;
+	case 56: return DATA_ARRAY::Weaver;
+	case 57: return DATA_ARRAY::Holosmith;
+	case 58: return DATA_ARRAY::Deadeye;
+	case 59: return DATA_ARRAY::Mirage;
+	case 60: return DATA_ARRAY::Scourge;
+	case 61: return DATA_ARRAY::Spellbreaker;
+	case 62: return DATA_ARRAY::Firebrand;
+	case 63: return DATA_ARRAY::Renegade;
+	case 64: return DATA_ARRAY::Harbinger;
+	case 65: return DATA_ARRAY::Willbender;
+	case 66: return DATA_ARRAY::Virtuoso;
+	case 67: return DATA_ARRAY::Catalyst;
+	case 68: return DATA_ARRAY::Bladesworn;
+	case 69: return DATA_ARRAY::Vindicator;
+	case 70: return DATA_ARRAY::Mechanist;
+	case 71: return DATA_ARRAY::Specter;
+	case 72: return DATA_ARRAY::Untamed;
+	default: return DATA_ARRAY::Unknown;
+	}
 }
 
-void imgui_team_combatants(std::pair<uint16_t, std::vector<id_umap>> team)
+/* log to extensions tab in arcdps log window, thread/async safe */
+void log_arc(char* str) {
+	if (arclog) 
+		arclog(str);
+	return;
+}
+
+ImVec4* color_array[5];
+void init_colors()
 {
-	selected_team = team.first;
-	id_umap* combatants_to_display = &(history.at(selected_team)[combatants_disp_idx]);
-	uint32_t sum = 0;
-	std::vector<std::pair<uint32_t, uint16_t>> pairs = std::vector<std::pair<uint32_t, uint16_t>>();
+	if (arccolors) 
+		arccolors(color_array);
+	return;
+}
+
+/* window callback -- return is assigned to umsg (return zero to not be processed by arcdps or game) */
+uintptr_t mod_wnd(const HWND hWnd, const UINT uMsg, const WPARAM wParam, const LPARAM lParam) 
+{
+	if ((get_ui_settings() >> 2) & 1)
 	{
-		for (auto itr = combatants_to_display->begin(); itr != combatants_to_display->end(); ++itr)
+		wFlags |= ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
+		if (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) 
 		{
-			sum += (*itr).second;
-			pairs.push_back(*itr);
+			uint64_t keys = get_key_settings();
+			uint16_t* mod_key = (uint16_t*)&keys;
+			if (wParam == *mod_key)
+			{
+				mod_key1 = true;
+			}
+			if (wParam == *(mod_key+1))
+			{
+				mod_key2 = true;
+			}
+		}
+
+		else if (uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP) 
+		{
+			uint64_t keys = get_key_settings();
+			uint16_t* mod_key = (uint16_t*)&keys;
+			if (wParam == *mod_key)
+			{
+				mod_key1 = false;
+			}
+			if (wParam == *(mod_key+1))
+			{
+				mod_key2 = false;
+			}
+		}
+		if (mod_key1 && mod_key2)
+			wFlags &= ~(ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+	}
+	else
+		wFlags &= ~(ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+	return uMsg;
+}
+
+std::unordered_set<uint16_t> ids = std::unordered_set<uint16_t>();
+std::unordered_map<uint16_t, std::vector<std::vector<uint32_t>>> team_history_class_count = std::unordered_map<uint16_t, std::vector<std::vector<uint32_t>>>();
+
+int history_radio_state = 0;
+int cur_history_idx = 0;
+int history_to_disp_idx = 0;
+uint16_t selected_team = 0;
+
+void record_agent(const ag* agent, const uint16_t instid, const uint8_t iHit)
+{
+	if (agent->team == 0)
+		return;
+	std::lock_guard<std::mutex>lock(mtx);
+	auto& team = team_history_class_count.try_emplace(agent->team, std::vector<std::vector<uint32_t>>(MAX_HISTORY_SIZE, std::vector<uint32_t>(DATA_ARRAY::LENGTH))).first;
+
+	if (ids.find(instid) != ids.end())
+		return;
+	ids.emplace(instid);
+
+	uint16_t prof_elite = ((agent->prof & 0xFF) << 8) | (agent->elite & 0xFF);
+
+	uint8_t idx = get_prof_elite_idx(prof_elite);
+	team->second.at(cur_history_idx)[idx] = (prof_elite << 16) | (team->second.at(cur_history_idx)[idx] + 1);
+	team->second.at(cur_history_idx)[DATA_ARRAY::TOTAL]++;
+	team->second.at(cur_history_idx)[DATA_ARRAY::HIT_TOTAL] += iHit;
+
+	return;
+}
+
+bool isWvw()
+{
+	unsigned short map_id = (arccontext[0x701] << 8) | arccontext[0x700];
+	switch ((HackedMapIds)map_id)
+	{
+	case HackedMapIds::WVW_BBL:
+	case HackedMapIds::WVW_EBG:
+	case HackedMapIds::WVW_GBL:
+	case HackedMapIds::WVW_RBL:
+	case HackedMapIds::WVW_LOUNGE:
+		return true;
+	default:
+		return false;
+	}
+}
+
+bool log_ended = false;
+
+/* combat callback -- may be called asynchronously, use id param to keep track of order, first event id will be 2. return ignored */
+/* at least one participant will be party/squad or minion of, or a buff applied by squad in the case of buff remove. not all statechanges present, see evtc statechange enum */
+uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const char* skillname, const uint64_t id, const uint64_t revision) 
+{
+	if (!ev)
+	{
+		if (!src->elite) 
+		{
+			if (src->prof) 
+			{
+				if (dst->self)
+				{
+					toShow = isWvw();
+				}
+			}
 		}
 	}
-
-	std::sort(pairs.begin(), pairs.end(), [=](std::pair<uint32_t, uint16_t>& a, std::pair<uint32_t, uint16_t>& b)
+	if(enabled && toShow)
 	{
-		return a.second > b.second;
+		if (ev)
+		{
+			if (selected_team != 0 && ev->is_statechange == CBTS_LOGEND)
+				log_ended = true;
+			if (ev->is_activation || ev->is_buffremove || ev->is_statechange || ev->buff || src->elite == 0xFFFFFFFF || dst->elite == 0xFFFFFFFF || src->prof == 0 || dst->prof == 0)
+				return 0;
+			if (src && dst)
+			{
+				if (log_ended && (src->name == nullptr || dst->name == nullptr))
+				{
+					std::lock_guard<std::mutex>lock(mtx);
+					cur_history_idx = (cur_history_idx + 1) % MAX_HISTORY_SIZE;
+					for (auto& team : team_history_class_count)
+					{
+						auto& history = team.second[cur_history_idx];
+						if (history[DATA_ARRAY::TOTAL] != 0)
+						{
+							memset(&history[0], 0, DATA_ARRAY::LENGTH);
+						}
+						ids.clear();
+						history_to_disp_idx = cur_history_idx;
+						history_radio_state = 0;
+					}
+					log_ended = false;
+				}
+
+				if (src->name == nullptr)
+				{
+					record_agent(src, ev->src_instid, 0);
+				}
+				else if (dst->name == nullptr)
+				{
+					record_agent(dst, ev->dst_instid, src->self & 1);
+				}
+			}
+		}
 	}
-	);
+	return 0;
+}
+
+void options_end_proc(const char* windowname)
+{
+	ImGui::Checkbox("Know thy enemy##1cb", &enabled);
+	ImGui::NewLine();
+	ImGui::Separator();
+	if (ImGui::Button("Reset settings##fte"))
+	{
+		enabled = true;
+		wFlags = 0;
+		bTitleBg = true;
+		std::wstring path = std::wstring(get_settings_path());
+		path = path.substr(0, path.find_last_of(L"\\")+1);
+		path.append(L"know_thy_enemy_settings.txt");
+		std::fstream file(path.c_str(), std::fstream::out | std::fstream::trunc);
+		if (file.good())
+		{
+			file << "enabled=" << (enabled ? '1' : '0') << "\n";
+			file << "wFlags=" << std::to_string(wFlags) << "\n";
+			file << "titleTrans=" << (bTitleBg ? '1' : '0') << "\n";
+		}
+		file.close();
+	}
+}
+
+void options_windows_proc(const char* windowname)
+{
+	// log_arc((char*)windowname);
+}
+
+
+char cstrings[MAX_TOTAL_STRINGS][MAX_STRING_SIZE] = {0}; //64 is good enough
+uint8_t cstrings_idx = 0;
+
+void draw_bar(const float frac, const char* text, const ImVec4& color)
+{
+	ImVec2 upper_left = ImGui::GetCursorScreenPos();
+	ImVec2 lower_right = ImVec2(upper_left.x + (ImGui::GetContentRegionAvailWidth()*frac), upper_left.y + ImGui::GetTextLineHeight() + 2);
+	//ImGui::ProgressBar(frac, ImVec2(-1, 0), "");
+	ImGui::GetWindowDrawList()->AddRectFilled(upper_left, lower_right, ImGui::ColorConvertFloat4ToU32(color));
+
+	ImVec2 text_start = ImGui::GetCursorPos();
+	text_start.y += 1; //middle of bar
+	ImGui::SetCursorPos(text_start);
+	ImGui::TextUnformatted(text, text + strlen(text));
+
+	text_start.y += ImGui::GetTextLineHeight() + 3; //end of bar + 2 pad
+	ImGui::SetCursorPos(text_start);
+}
+
+void draw_history_menu()
+{
+	if(selected_team == 0)
+	{
+		ImGui::Text("No data...");
+	}
+	else
+	{
+		snprintf(&cstrings[cstrings_idx][0], 32, "Current ##fte");
+		if (ImGui::RadioButton(&cstrings[cstrings_idx++][0], history_radio_state == 0))
+		{
+			history_radio_state = 0;
+			history_to_disp_idx = cur_history_idx;
+			ImGui::CloseCurrentPopup();
+		}
+		int past_history_idx = (cur_history_idx - 1 + MAX_HISTORY_SIZE) % MAX_HISTORY_SIZE;
+		for(int i = 0; i < MAX_HISTORY_SIZE-1; i++)
+		{
+			snprintf(&cstrings[cstrings_idx][0], 32, "History %d##fte", i+1);
+			if(ImGui::RadioButton(&cstrings[cstrings_idx++][0], history_radio_state == (i+1)))
+			{
+				history_radio_state = i+1;
+				history_to_disp_idx = past_history_idx;
+				ImGui::CloseCurrentPopup();
+			}
+			past_history_idx = (past_history_idx - 1 + MAX_HISTORY_SIZE) % MAX_HISTORY_SIZE;
+		}
+	}
+}
+
+void draw_style_menu()
+{
+	bool bTitlebar = (wFlags & ImGuiWindowFlags_NoTitleBar) == 0;
+	if (ImGui::Checkbox("title bar##kte", &bTitlebar))
+	{
+		wFlags ^= ImGuiWindowFlags_NoTitleBar;
+	}
+	bool bScrollbar = (wFlags & ImGuiWindowFlags_NoScrollbar) == 0;
+	if (ImGui::Checkbox("scroll bar##kte", &bScrollbar))
+	{
+		wFlags ^= ImGuiWindowFlags_NoScrollbar;
+	}
+	bool bBackground = (wFlags & ImGuiWindowFlags_NoBackground) == 0;
+	if (ImGui::Checkbox("background##kte", &bBackground))
+	{
+		wFlags ^= ImGuiWindowFlags_NoBackground;
+	}
+	if (ImGui::Checkbox("title bar background##kte", &bTitleBg))
+	{
+	}
+}
+
+void imgui_team_class_bars()
+{
+	std::vector<uint32_t> combatants_to_display(team_history_class_count.at(selected_team)[history_to_disp_idx]);
+
+	uint16_t sum = combatants_to_display[DATA_ARRAY::TOTAL];
+	uint16_t hit = combatants_to_display[DATA_ARRAY::HIT_TOTAL];
+	combatants_to_display.pop_back();
+	combatants_to_display.pop_back();
+
+	std::sort(combatants_to_display.begin(), combatants_to_display.end(), [=](uint32_t& a, uint32_t& b)
+	{
+		return (a & 0xFFFF) > (b & 0xFFFF);
+	});
 
 	ImGui::PushStyleColor(ImGuiCol_Text, color_array[0][4]);
-	new_string_int("Total: %d", sum);
-	ImGui::ProgressBar(1, ImVec2(-1, 0), strings.back().c_str());
 
-	for (std::pair<uint32_t, uint16_t> pair : pairs)
+	snprintf(&cstrings[cstrings_idx][0], 32, " Hit %d out of %d ", hit, sum);
+	draw_bar(1.f, &cstrings[cstrings_idx++][0], ImGui::GetStyleColorVec4(ImGuiCol_PlotHistogram));
+
+	uint16_t cur_max = combatants_to_display[0] & 0xFFFF;
+	for (uint32_t& prof_elite_count : combatants_to_display)
 	{
-		ImGui::PushStyleColor(ImGuiCol_PlotHistogram, color_array[1][pair.first >> 16]);
-		strings.push_back(std::to_string(pair.second).append(" ").append(std::string(get_name(pair.first))));
-		ImGui::ProgressBar(pair.second / (pairs[0].second + .001f), ImVec2(-1, 0), strings.back().c_str());
-		ImGui::PopStyleColor();
+		uint16_t prof_elite = prof_elite_count >> 16;
+		uint8_t prof = prof_elite >> 8;
+		uint16_t count = prof_elite_count & 0xFFFF;
+		if (count != 0)
+		{
+			snprintf(&cstrings[cstrings_idx][0], 32, " %d %s ", count, get_prof_elite_name(prof_elite));
+			draw_bar((float)count/(float)cur_max, &cstrings[cstrings_idx++][0], color_array[1][prof]);
+		}
 	}
 	ImGui::PopStyleColor();
 }
 
-void add_new_team_name(uint16_t team_id)
+void push_new_team_name(const uint16_t team_id)
 {
 	switch (team_id)
 	{
 	case 432:
-		strings.push_back("Blue");
+		snprintf(&cstrings[cstrings_idx][0], 32, "Blue##fte");
 		break;
 	case 2739:
-		strings.push_back("Green");
+		snprintf(&cstrings[cstrings_idx][0], 32, "Green##fte");
 		break;
 	case 705:
-		strings.push_back("Red");
+		snprintf(&cstrings[cstrings_idx][0], 32, "Red##fte");
 		break;
 	default:
-		new_string_int("Team %d", team_id);
+		snprintf(&cstrings[cstrings_idx][0], 32, "Team %d##fte", team_id);
 		break;
 	}
 }
 
-uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or_ooc)
+uintptr_t imgui_proc(const uint32_t not_charsel_or_loading, const uint32_t hide_if_combat_or_ooc)
 {
 	if (not_charsel_or_loading && enabled && toShow)
 	{
-		strings.clear();
-		bool pushed = false;
+		cstrings_idx = 0;
+		bool made_title_invis = false;
 		if (!bTitleBg)
 		{
 			ImVec4 color = ImGui::GetStyleColorVec4(ImGuiCol_TitleBg); //xyzw == RGBA
 			ImGui::PushStyleColor(ImGuiCol_TitleBg, ImVec4(color.x, color.y, color.z, 0.0)); 
 			ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ImVec4(color.x, color.y, color.z, 0.0)); 
-			pushed = true;
+			made_title_invis = true;
+
 		}
+
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(100, 10));
+
 		if (ImGui::Begin("Know thy enemy", &enabled, wFlags))
 		{
-			if (ImGui::BeginTabBar("MyTabBar", 0))
+			if (ImGui::BeginTabBar("MyTabBar##fte", 0))
 			{
 				std::lock_guard<std::mutex>lock(mtx);
-				for (auto team : history)
+				for (auto& team : team_history_class_count)
 				{
-					add_new_team_name(team.first);
-					if (ImGui::BeginTabItem(strings.back().c_str()))
+					push_new_team_name(team.first);
+					if (ImGui::BeginTabItem(&cstrings[cstrings_idx++][0]))
 					{
-						imgui_team_combatants(team);
+						selected_team = team.first;
+						imgui_team_class_bars();
 						ImGui::EndTabItem();
 					}
 				}
@@ -638,77 +690,27 @@ uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or
 
 			if( ImGui::BeginPopupContextWindow(NULL, 1))
 			{
-				if (ImGui::BeginMenu("History"))
+				ImGuiStyle style = ImGui::GetStyle();
+				ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, 0));
+				if (ImGui::BeginMenu("History##fte"))
 				{
-					if(selected_team == 0)
-					{
-						ImGui::Text("No data...");
-					}
-					else
-					{
-						ImGuiStyle style = ImGui::GetStyle();
-						ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, 0));
-						strings.push_back(std::string(32, 0));
-						snprintf(&strings.back()[0], 32, " Current ");
-						if (ImGui::RadioButton(strings.back().c_str(), &history_radio_state, 0))
-						{
-							history_radio_state = 0;
-							combatants_disp_idx = combatants_idx;
-							ImGui::CloseCurrentPopup();
-						}
-						int order_idx = combatants_idx - 1;
-						if(order_idx < 0)
-							order_idx = 5;
-						for(int i = 0; i < 5; i++)
-						{
-							new_string_int("History %d", i+1);
-							if(ImGui::RadioButton(strings.back().c_str(), &history_radio_state, i+1))
-							{
-								history_radio_state = i+1;
-								combatants_disp_idx = order_idx;
-								ImGui::CloseCurrentPopup();
-							}
-							order_idx--;
-							if(order_idx < 0)
-								order_idx = 5;
-						}
-						ImGui::PopStyleVar();
-					}
+					draw_history_menu();
 					ImGui::EndMenu();
 				}
-				if (ImGui::BeginMenu("Style"))
+				if (ImGui::BeginMenu("Style##fte"))
 				{
-					ImGuiStyle style = ImGui::GetStyle();
-					ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, 0));
-					bool bTitlebar = (wFlags & ImGuiWindowFlags_NoTitleBar) == 0;
-					if (ImGui::Checkbox("title bar", &bTitlebar))
-					{
-						wFlags ^= ImGuiWindowFlags_NoTitleBar;
-					}
-					bool bScrollbar = (wFlags & ImGuiWindowFlags_NoScrollbar) == 0;
-					if (ImGui::Checkbox("scroll bar", &bScrollbar))
-					{
-						wFlags ^= ImGuiWindowFlags_NoScrollbar;
-					}
-					bool bBackground = (wFlags & ImGuiWindowFlags_NoBackground) == 0;
-					if (ImGui::Checkbox("background", &bBackground))
-					{
-						wFlags ^= ImGuiWindowFlags_NoBackground;
-					}
-					if (ImGui::Checkbox("title bar background", &bTitleBg))
-					{
-					}
-					ImGui::PopStyleVar();
+					draw_style_menu();
 					ImGui::EndMenu();
 				}
+				ImGui::PopStyleVar();
 				ImGui::EndPopup();
 			}
 		}
 		ImGui::End();
-		if (pushed)
+		ImGui::PopStyleVar();
+		if (made_title_invis)
 		{
-			ImGui::PopStyleColor();
-			ImGui::PopStyleColor();
+			ImGui::PopStyleColor(2);
 		}
 	}
 	return 0;
@@ -717,10 +719,9 @@ uintptr_t imgui_proc(uint32_t not_charsel_or_loading, uint32_t hide_if_combat_or
 void save_kte_settings()
 {
 	std::wstring path = std::wstring(get_settings_path());
-	std::string cpath(path.begin(), path.end());
-	cpath = cpath.substr(0, cpath.find_last_of("\\")+1);
-	cpath.append("know_thy_enemy_settings.txt");
-	std::fstream file(cpath.c_str(), std::fstream::out | std::fstream::trunc);
+	path = path.substr(0, path.find_last_of(L"\\")+1);
+	path.append(L"know_thy_enemy_settings.txt");
+	std::fstream file(path.c_str(), std::fstream::out | std::fstream::trunc);
 	if (file.good())
 	{
 		file << "enabled=" << (enabled ? '1' : '0') << "\n";
@@ -734,10 +735,9 @@ void save_kte_settings()
 void init_kte_settings()
 {
 	std::wstring path = std::wstring(get_settings_path());
-	std::string cpath(path.begin(), path.end());
-	cpath = cpath.substr(0, cpath.find_last_of("\\")+1);
-	cpath.append("know_thy_enemy_settings.txt");
-	std::fstream file(cpath.c_str(), std::fstream::in | std::fstream::out | std::fstream::app);
+	path = path.substr(0, path.find_last_of(L"\\")+1);
+	path.append(L"know_thy_enemy_settings.txt");
+	std::fstream file(path.c_str(), std::fstream::in | std::fstream::out | std::fstream::app);
 	std::string line;
 	bool success = false;
 	if (file.good())
@@ -765,12 +765,27 @@ void init_kte_settings()
 	}
 	if (!success)
 	{
-		file.open(cpath.c_str(), std::fstream::in | std::fstream::out | std::fstream::trunc);
+		file.open(path.c_str(), std::fstream::in | std::fstream::out | std::fstream::trunc);
 	}
 	file.close();
 }
 
+/* release mod -- return ignored */
+uintptr_t mod_release() {
+	FreeConsole();
+	save_kte_settings();
+	return 0;
+}
+
+/* export -- arcdps looks for this exported function and calls the address it returns on client exit */
+extern "C" __declspec(dllexport) void* get_release_addr() {
+	arcvers = 0;
+	return mod_release;
+}
+
+
 /* initialize mod -- return table that arcdps will use for callbacks. exports struct and strings are copied to arcdps memory only once at init */
+static arcdps_exports arc_exports = {0};
 arcdps_exports* mod_init() {
 	/* for arcdps */
 	memset(&arc_exports, 0, sizeof(arcdps_exports));
@@ -778,17 +793,32 @@ arcdps_exports* mod_init() {
 	arc_exports.imguivers = IMGUI_VERSION_NUM;
 	arc_exports.size = sizeof(arcdps_exports);
 	arc_exports.out_name = "Know thy enemy";
-	arc_exports.out_build = "2.6";
+	arc_exports.out_build = "3.0";
 	arc_exports.imgui = imgui_proc;
 	arc_exports.wnd_nofilter = mod_wnd;
 	arc_exports.combat = mod_combat;
 	arc_exports.options_end = options_end_proc;
 	arc_exports.options_windows = options_windows_proc;
-	//arc_exports.size = (uintptr_t)"error message if you decide to not load, sig must be 0";
 	init_colors();
 	init_kte_settings();
-	combatants_idx = 0;
-	combatants_disp_idx = 0;
+	cur_history_idx = 0;
+	history_to_disp_idx = 0;
 	log_arc((char*)"know_thy_enemy mod_init"); // if using vs2015+, project properties > c++ > conformance mode > permissive to avoid const to not const conversion error
 	return &arc_exports;
+}
+
+/* export -- arcdps looks for this exported function and calls the address it returns on client load */
+extern "C" __declspec(dllexport) void* get_init_addr(char* arcversion, ImGuiContext* imguictx, void* id3dptr, HANDLE arcdll, void* mallocfn, void* freefn, uint32_t d3dversion) {
+	// id3dptr is IDirect3D9* if d3dversion==9, or IDXGISwapChain* if d3dversion==11
+	arcvers = arcversion;
+	get_settings_path = (wchar_t*(*)())GetProcAddress((HMODULE)arcdll, "e0");
+	arccontext_0x510 = (const char*(*)())GetProcAddress((HMODULE)arcdll, "e1");
+	arccontext = arccontext_0x510()-0x510;
+	arclog = (size_t(*)(char*))GetProcAddress((HMODULE)arcdll, "e8");
+	arccolors = (void(*)(ImVec4**))GetProcAddress((HMODULE)arcdll, "e5");
+	get_ui_settings = (uint64_t(*)())GetProcAddress((HMODULE)arcdll, "e6");
+	get_key_settings = (uint64_t(*)())GetProcAddress((HMODULE)arcdll, "e7");
+	ImGui::SetCurrentContext((ImGuiContext*)imguictx);
+	ImGui::SetAllocatorFunctions((void *(*)(size_t, void*))mallocfn, (void (*)(void*, void*))freefn); // on imgui 1.80+
+	return mod_init;
 }

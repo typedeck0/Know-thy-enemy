@@ -394,6 +394,7 @@ uintptr_t mod_wnd(const HWND hWnd, const UINT uMsg, const WPARAM wParam, const L
 }
 
 std::unordered_set<uint16_t> ids = std::unordered_set<uint16_t>();
+std::unordered_set<uint16_t> hit_ids = std::unordered_set<uint16_t>();
 std::unordered_map<uint16_t, std::vector<std::vector<uint32_t>>> team_history_class_count = std::unordered_map<uint16_t, std::vector<std::vector<uint32_t>>>();
 
 int history_radio_state = 0;
@@ -408,6 +409,15 @@ void record_agent(const ag* agent, const uint16_t instid, const uint8_t iHit)
 	std::lock_guard<std::mutex>lock(mtx);
 	auto& team = team_history_class_count.try_emplace(agent->team, std::vector<std::vector<uint32_t>>(MAX_HISTORY_SIZE, std::vector<uint32_t>(DATA_ARRAY::LENGTH))).first;
 
+	if (iHit)
+	{
+		if (hit_ids.find(instid) == hit_ids.end())
+		{
+			team->second.at(cur_history_idx)[DATA_ARRAY::HIT_TOTAL] += iHit;
+			hit_ids.emplace(instid);
+		}
+	}
+
 	if (ids.find(instid) != ids.end())
 		return;
 	ids.emplace(instid);
@@ -417,7 +427,6 @@ void record_agent(const ag* agent, const uint16_t instid, const uint8_t iHit)
 	uint8_t idx = get_prof_elite_idx(prof_elite);
 	team->second.at(cur_history_idx)[idx] = (prof_elite << 16) | (team->second.at(cur_history_idx)[idx] + 1);
 	team->second.at(cur_history_idx)[DATA_ARRAY::TOTAL]++;
-	team->second.at(cur_history_idx)[DATA_ARRAY::HIT_TOTAL] += iHit;
 
 	return;
 }
@@ -479,6 +488,7 @@ uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const cha
 							memset(&history[0], 0, DATA_ARRAY::LENGTH);
 						}
 						ids.clear();
+						hit_ids.clear();
 						history_to_disp_idx = cur_history_idx;
 						history_radio_state = 0;
 					}

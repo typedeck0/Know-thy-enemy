@@ -634,7 +634,7 @@ uint8_t cstrings_idx = 0;
 void draw_bar(const float frac, const char* text, const ImVec4& color)
 {
 	ImVec2 upper_left = ImGui::GetCursorScreenPos();
-	ImVec2 lower_right = ImVec2(upper_left.x + (ImGui::GetContentRegionAvailWidth()*frac), upper_left.y + ImGui::GetTextLineHeight() + 2);
+	ImVec2 lower_right = ImVec2(upper_left.x + (ImGui::GetContentRegionAvail().x*frac), upper_left.y + ImGui::GetTextLineHeight() + 2);
 	//ImGui::ProgressBar(frac, ImVec2(-1, 0), "");
 	ImGui::GetWindowDrawList()->AddRectFilled(upper_left, lower_right, ImGui::ColorConvertFloat4ToU32(color));
 
@@ -728,7 +728,7 @@ void imgui_team_class_bars()
 
 	ImGui::PushStyleColor(ImGuiCol_Text, color_array[0][4]);
 
-	snprintf(&cstrings[cstrings_idx][0], 32, " Hit %d out of %d ", total_hit, total);
+	snprintf(&cstrings[cstrings_idx][0], 32, " You hit %d/%d ", total_hit, total);
 	draw_bar(1.f, &cstrings[cstrings_idx++][0], ImGui::GetStyleColorVec4(ImGuiCol_PlotHistogram));
 
 	uint16_t cur_max = combatants_to_disp[0].count;

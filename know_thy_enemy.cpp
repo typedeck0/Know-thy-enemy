@@ -1,18 +1,12 @@
-#include <stdint.h>
-#include <stdio.h>
 #include <unordered_map>
 #include <Windows.h>
 #include <mutex>
-#include <vector>
 #include <algorithm>
 #include "imgui/imgui.h"
 #include <string>
 #include <sstream>
-#include <cstdio>
-#include <time.h>
 #include <fstream>
-#include <unordered_set>
-#include <deque>
+#include <array>
 
 /* combat state change */
 enum cbtstatechange {
@@ -180,11 +174,188 @@ enum LAYOUT : uint8_t
 	Specter,
 	Untamed,
 	Unknown,
-	HIT_TOTAL,
-	TOTAL,
 	LENGTH
 };
 }
+
+struct s_profelite {
+	uint8_t prof = 0;
+	uint8_t elite = 0;
+	uint8_t idx = 0;
+	uint8_t count = 0;
+	char* name = nullptr;
+	s_profelite() {}
+	s_profelite(uint8_t _prof, uint8_t _elite)
+	{
+		prof = _prof;
+		elite = _elite;
+		switch (_elite)
+		{
+		case 0:
+			switch (_prof)
+			{
+			case 1: 
+				name = "Guardian";
+				idx = DATA_ARRAY::Guardian;
+				return;
+			case 2: 
+				name = "Warrior";
+				idx = DATA_ARRAY::Warrior;
+				return;
+			case 3: 
+				name = "Engineer";
+				idx = DATA_ARRAY::Engineer;
+				return;
+			case 4: 
+				name = "Ranger";
+				idx = DATA_ARRAY::Ranger;
+				return;
+			case 5:  
+				name = "Thief";
+				idx = DATA_ARRAY::Thief;
+				return;
+			case 6:  
+				name = "Elementalist";
+				idx = DATA_ARRAY::Elementalist;
+				return;
+			case 7:  
+				name = "Mesmer";
+				idx = DATA_ARRAY::Mesmer;
+				return;
+			case 8:  
+				name = "Necromancer";
+				idx = DATA_ARRAY::Necromancer;
+				return;
+			case 9:  
+				name = "Revenant";
+				idx = DATA_ARRAY::Revenant;
+				return;
+			default: 
+				name = "Unknown";
+				idx = DATA_ARRAY::Unknown;
+				return;
+			}
+		case 5:	
+			name = "Druid";
+			idx = DATA_ARRAY::Druid;
+			return;
+		case 7:	
+			name = "Daredevil";
+			idx = DATA_ARRAY::Daredevil;
+			return;
+		case 18:
+			name = "Berserker";
+			idx = DATA_ARRAY::Berserker;
+			return;
+		case 27:
+			name = "Dragonhunter";
+			idx = DATA_ARRAY::Dragonhunter;
+			return;
+		case 34:
+			name = "Reaper";
+			idx = DATA_ARRAY::Reaper;
+			return;
+		case 40:
+			name = "Chronomancer";
+			idx = DATA_ARRAY::Chronomancer;
+			return;
+		case 43:
+			name = "Scrapper";
+			idx = DATA_ARRAY::Scrapper;
+			return;
+		case 48:
+			name = "Tempest";
+			idx = DATA_ARRAY::Tempest;
+			return;
+		case 52:
+			name = "Herald";
+			idx = DATA_ARRAY::Herald;
+			return;
+		case 55:
+			name = "Soulbeast";
+			idx = DATA_ARRAY::Soulbeast;
+			return;
+		case 56:
+			name = "Weaver";
+			idx = DATA_ARRAY::Weaver;
+			return;
+		case 57:
+			name = "Holosmith";
+			idx = DATA_ARRAY::Holosmith;
+			return;
+		case 58:
+			name = "Deadeye";
+			idx = DATA_ARRAY::Deadeye;
+			return;
+		case 59:
+			name = "Mirage";
+			idx = DATA_ARRAY::Mirage;
+			return;
+		case 60:
+			name = "Scourge";
+			idx = DATA_ARRAY::Scourge;
+			return;
+		case 61:
+			name = "Spellbreaker";
+			idx = DATA_ARRAY::Spellbreaker;
+			return;
+		case 62:
+			name = "Firebrand";
+			idx = DATA_ARRAY::Firebrand;
+			return;
+		case 63:
+			name = "Renegade";
+			idx = DATA_ARRAY::Renegade;
+			return;
+		case 64:
+			name = "Harbinger";
+			idx = DATA_ARRAY::Harbinger;
+			return;
+		case 65:
+			name = "Willbender";
+			idx = DATA_ARRAY::Willbender;
+			return;
+		case 66:
+			name = "Virtuoso";
+			idx = DATA_ARRAY::Virtuoso;
+			return;
+		case 67:
+			name = "Catalyst";
+			idx = DATA_ARRAY::Catalyst;
+			return;
+		case 68:
+			name = "Bladesworn";
+			idx = DATA_ARRAY::Bladesworn;
+			return;
+		case 69:
+			name = "Vindicator";
+			idx = DATA_ARRAY::Vindicator;
+			return;
+		case 70:
+			name = "Mechanist";
+			idx = DATA_ARRAY::Mechanist;
+			return;
+		case 71:
+			name = "Specter";
+			idx = DATA_ARRAY::Specter;
+			return;
+		case 72:
+			name = "Untamed";
+			idx = DATA_ARRAY::Untamed;
+			return;
+		default:
+			name = "Unknown";
+			idx = DATA_ARRAY::Unknown;
+			return;
+		}
+	}
+};
+
+struct s_team_battle {
+	uint8_t total;
+	uint8_t total_hit;
+	std::array<s_profelite, DATA_ARRAY::LENGTH> profelites;
+};
 
 std::mutex mtx;
 
@@ -217,6 +388,15 @@ uint64_t(*get_key_settings)();
 
 const char* arccontext = nullptr;
 
+
+std::unordered_map<uint16_t, bool> ids = std::unordered_map<uint16_t, bool>();
+std::unordered_map<uint16_t, std::array<s_team_battle, MAX_HISTORY_SIZE>> team_history_map = std::unordered_map<uint16_t, std::array<s_team_battle, MAX_HISTORY_SIZE>>();
+
+int history_radio_state = 0;
+int cur_history_idx = 0;
+int history_to_disp_idx = 0;
+uint16_t selected_team = 0;
+
 /* dll attach -- from winapi */
 void dll_init(const HANDLE hModule) {
 	return;
@@ -237,104 +417,6 @@ BOOL APIENTRY DllMain(const HANDLE hModule, const DWORD ulReasonForCall, const L
 	case DLL_THREAD_DETACH:  break;
 	}
 	return 1;
-}
-
-const char* get_prof_elite_name(const uint16_t prof_elite)
-{
-	switch (prof_elite & 0xFF)
-	{
-	case 0:
-		switch (prof_elite >> 8)
-		{
-		case 1: return "Guardian";
-		case 2: return "Warrior";
-		case 3: return "Engineer";
-		case 4: return "Ranger";
-		case 5: return "Thief";
-		case 6: return "Elementalist";
-		case 7: return "Mesmer";
-		case 8: return "Necromancer";
-		case 9: return "Revenant";
-		default: return "Unknown";
-		}
-	case 5:	return "Druid";
-	case 7:	return "Daredevil";
-	case 18: return "Berserker";
-	case 27: return "Dragonhunter";
-	case 34: return "Reaper";
-	case 40: return "Chronomancer";
-	case 43: return "Scrapper";
-	case 48: return "Tempest";
-	case 52: return "Herald";
-	case 55: return "Soulbeast";
-	case 56: return "Weaver";
-	case 57: return "Holosmith";
-	case 58: return "Deadeye";
-	case 59: return "Mirage";
-	case 60: return "Scourge";
-	case 61: return "Spellbreaker";
-	case 62: return "Firebrand";
-	case 63: return "Renegade";
-	case 64: return "Harbinger";
-	case 65: return "Willbender";
-	case 66: return "Virtuoso";
-	case 67: return "Catalyst";
-	case 68: return "Bladesworn";
-	case 69: return "Vindicator";
-	case 70: return "Mechanist";
-	case 71: return "Specter";
-	case 72: return "Untamed";
-	default: return "Unknown";
-	}
-}
-
-uint8_t get_prof_elite_idx(const uint16_t prof_elite)
-{
-	switch (prof_elite & 0xFF)
-	{
-	case 0:
-		switch (prof_elite >> 8)
-		{
-		case 1: return DATA_ARRAY::Guardian;
-		case 2: return DATA_ARRAY::Warrior;
-		case 3: return DATA_ARRAY::Engineer;
-		case 4: return DATA_ARRAY::Ranger;
-		case 5: return DATA_ARRAY::Thief;
-		case 6: return DATA_ARRAY::Elementalist;
-		case 7: return DATA_ARRAY::Mesmer;
-		case 8: return DATA_ARRAY::Necromancer;
-		case 9: return DATA_ARRAY::Revenant;
-		default: return DATA_ARRAY::Unknown;
-		}
-	case 5:	 return DATA_ARRAY::Druid;
-	case 7:	 return DATA_ARRAY::Daredevil;
-	case 18: return DATA_ARRAY::Berserker;
-	case 27: return DATA_ARRAY::Dragonhunter;
-	case 34: return DATA_ARRAY::Reaper;
-	case 40: return DATA_ARRAY::Chronomancer;
-	case 43: return DATA_ARRAY::Scrapper;
-	case 48: return DATA_ARRAY::Tempest;
-	case 52: return DATA_ARRAY::Herald;
-	case 55: return DATA_ARRAY::Soulbeast;
-	case 56: return DATA_ARRAY::Weaver;
-	case 57: return DATA_ARRAY::Holosmith;
-	case 58: return DATA_ARRAY::Deadeye;
-	case 59: return DATA_ARRAY::Mirage;
-	case 60: return DATA_ARRAY::Scourge;
-	case 61: return DATA_ARRAY::Spellbreaker;
-	case 62: return DATA_ARRAY::Firebrand;
-	case 63: return DATA_ARRAY::Renegade;
-	case 64: return DATA_ARRAY::Harbinger;
-	case 65: return DATA_ARRAY::Willbender;
-	case 66: return DATA_ARRAY::Virtuoso;
-	case 67: return DATA_ARRAY::Catalyst;
-	case 68: return DATA_ARRAY::Bladesworn;
-	case 69: return DATA_ARRAY::Vindicator;
-	case 70: return DATA_ARRAY::Mechanist;
-	case 71: return DATA_ARRAY::Specter;
-	case 72: return DATA_ARRAY::Untamed;
-	default: return DATA_ARRAY::Unknown;
-	}
 }
 
 /* log to extensions tab in arcdps log window, thread/async safe */
@@ -393,41 +475,45 @@ uintptr_t mod_wnd(const HWND hWnd, const UINT uMsg, const WPARAM wParam, const L
 	return uMsg;
 }
 
-std::unordered_set<uint16_t> ids = std::unordered_set<uint16_t>();
-std::unordered_set<uint16_t> hit_ids = std::unordered_set<uint16_t>();
-std::unordered_map<uint16_t, std::vector<std::vector<uint32_t>>> team_history_class_count = std::unordered_map<uint16_t, std::vector<std::vector<uint32_t>>>();
-
-int history_radio_state = 0;
-int cur_history_idx = 0;
-int history_to_disp_idx = 0;
-uint16_t selected_team = 0;
-
 void record_agent(const ag* agent, const uint16_t instid, const uint8_t iHit)
 {
 	if (agent->team == 0)
 		return;
-	std::lock_guard<std::mutex>lock(mtx);
-	auto& team = team_history_class_count.try_emplace(agent->team, std::vector<std::vector<uint32_t>>(MAX_HISTORY_SIZE, std::vector<uint32_t>(DATA_ARRAY::LENGTH))).first;
 
-	if (iHit)
+	if (ids.find(instid) != ids.end()) //if found
 	{
-		if (hit_ids.find(instid) == hit_ids.end())
+		if (iHit && ids[instid] == false)
 		{
-			team->second.at(cur_history_idx)[DATA_ARRAY::HIT_TOTAL]++;
-			hit_ids.emplace(instid);
+			ids[instid] = true;
+			std::lock_guard<std::mutex>lock(mtx);
+			team_history_map[agent->team][cur_history_idx].total_hit++;
 		}
+		return; //dont process found
+	}
+	else if (iHit) //process unfound
+	{
+		ids[instid] = true;
+		std::lock_guard<std::mutex>lock(mtx);
+		team_history_map[agent->team][cur_history_idx].total_hit++;
+	}
+	else
+	{
+		ids[instid] = false;
 	}
 
-	if (ids.find(instid) != ids.end())
-		return;
-	ids.emplace(instid);
+	s_profelite pe(agent->prof & 0xFF, agent->elite & 0xFF);
 
-	uint16_t prof_elite = ((agent->prof & 0xFF) << 8) | (agent->elite & 0xFF);
-
-	uint8_t idx = get_prof_elite_idx(prof_elite);
-	team->second.at(cur_history_idx)[idx] = (prof_elite << 16) | (team->second.at(cur_history_idx)[idx] + 1);
-	team->second.at(cur_history_idx)[DATA_ARRAY::TOTAL]++;
-
+	std::lock_guard<std::mutex>lock(mtx);
+	if (team_history_map[agent->team][cur_history_idx].profelites[pe.idx].name != nullptr)
+	{
+		team_history_map[agent->team][cur_history_idx].profelites[pe.idx].count++;
+	}
+	else
+	{
+		pe.count = 1;
+		team_history_map[agent->team][cur_history_idx].profelites[pe.idx] = pe;
+	}
+	team_history_map[agent->team][cur_history_idx].total++;
 	return;
 }
 
@@ -478,16 +564,20 @@ uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const cha
 			{
 				if (log_ended && (src->name == nullptr || dst->name == nullptr))
 				{
-					std::lock_guard<std::mutex>lock(mtx);
 					cur_history_idx = (cur_history_idx + 1) % MAX_HISTORY_SIZE;
-					for (auto& team : team_history_class_count)
+					for (auto& team : team_history_map)
 					{
-						if (team.second[cur_history_idx][DATA_ARRAY::TOTAL] != 0)
+						if (team.second[cur_history_idx].total != 0)
 						{
-							memset(&team.second[cur_history_idx][0], 0, DATA_ARRAY::LENGTH * sizeof(uint32_t));
+							std::lock_guard<std::mutex>lock(mtx);
+							team.second[cur_history_idx].total = 0;
+							team.second[cur_history_idx].total_hit = 0;
+							for(auto& profelite : team.second[cur_history_idx].profelites)
+							{
+								profelite.count = 0;
+							}
 						}
 						ids.clear();
-						hit_ids.clear();
 						history_to_disp_idx = cur_history_idx;
 						history_radio_state = 0;
 					}
@@ -611,34 +701,43 @@ void draw_style_menu()
 
 void imgui_team_class_bars()
 {
-	std::vector<uint32_t> combatants_to_display(team_history_class_count.at(selected_team)[history_to_disp_idx]);
+	uint8_t total = 0;
+	uint8_t total_hit = 0;
+	uint8_t total_disp = 0;
+	std::array<s_profelite, DATA_ARRAY::LENGTH> combatants_to_disp;
 
-	uint16_t sum = combatants_to_display[DATA_ARRAY::TOTAL];
-	uint16_t hit = combatants_to_display[DATA_ARRAY::HIT_TOTAL];
-	combatants_to_display.pop_back();
-	combatants_to_display.pop_back();
+	{ //sort profelites with counts
+		std::lock_guard<std::mutex>lock(mtx);
+	 	total = team_history_map[selected_team][history_to_disp_idx].total;
+		total_hit = team_history_map[selected_team][history_to_disp_idx].total_hit;
+		for(auto& profelite : team_history_map[selected_team][history_to_disp_idx].profelites)
+		{
+			if (profelite.count != 0)
+			{
+				combatants_to_disp[total_disp] = profelite; 
+				total_disp++;
+			}
+		}
+		total_disp++;
+	}
 
-	std::sort(combatants_to_display.begin(), combatants_to_display.end(), [=](uint32_t& a, uint32_t& b)
+	std::sort(combatants_to_disp.begin(), combatants_to_disp.begin()+total_disp, [=](s_profelite& a, s_profelite& b)
 	{
-		return (a & 0xFFFF) > (b & 0xFFFF);
+		return a.count > b.count;
 	});
 
 	ImGui::PushStyleColor(ImGuiCol_Text, color_array[0][4]);
 
-	snprintf(&cstrings[cstrings_idx][0], 32, " Hit %d out of %d ", hit, sum);
+	snprintf(&cstrings[cstrings_idx][0], 32, " Hit %d out of %d ", total_hit, total);
 	draw_bar(1.f, &cstrings[cstrings_idx++][0], ImGui::GetStyleColorVec4(ImGuiCol_PlotHistogram));
 
-	uint16_t cur_max = combatants_to_display[0] & 0xFFFF;
-	for (uint32_t& prof_elite_count : combatants_to_display)
+	uint16_t cur_max = combatants_to_disp[0].count;
+	for (s_profelite& profelite : combatants_to_disp)
 	{
-		uint16_t prof_elite = prof_elite_count >> 16;
-		uint8_t prof = prof_elite >> 8;
-		uint16_t count = prof_elite_count & 0xFFFF;
-		if (count != 0)
-		{
-			snprintf(&cstrings[cstrings_idx][0], 32, " %d %s ", count, get_prof_elite_name(prof_elite));
-			draw_bar((float)count/(float)cur_max, &cstrings[cstrings_idx++][0], color_array[1][prof]);
-		}
+		if (profelite.count == 0) //shortstop
+			break;
+		snprintf(&cstrings[cstrings_idx][0], 32, " %d %s ", profelite.count, profelite.name);
+		draw_bar((float)profelite.count/(float)cur_max, &cstrings[cstrings_idx++][0], color_array[1][profelite.prof]);
 	}
 	ImGui::PopStyleColor();
 }
@@ -683,8 +782,7 @@ uintptr_t imgui_proc(const uint32_t not_charsel_or_loading, const uint32_t hide_
 		{
 			if (ImGui::BeginTabBar("MyTabBar##fte", 0))
 			{
-				std::lock_guard<std::mutex>lock(mtx);
-				for (auto& team : team_history_class_count)
+				for (auto& team : team_history_map)
 				{
 					push_new_team_name(team.first);
 					if (ImGui::BeginTabItem(&cstrings[cstrings_idx++][0]))
@@ -802,7 +900,7 @@ arcdps_exports* mod_init() {
 	arc_exports.imguivers = IMGUI_VERSION_NUM;
 	arc_exports.size = sizeof(arcdps_exports);
 	arc_exports.out_name = "Know thy enemy";
-	arc_exports.out_build = "3.0";
+	arc_exports.out_build = "3.1";
 	arc_exports.imgui = imgui_proc;
 	arc_exports.wnd_nofilter = mod_wnd;
 	arc_exports.combat = mod_combat;

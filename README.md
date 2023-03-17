@@ -5,7 +5,7 @@ Tired of commanders saying "They're *twice* our size!"? Well now you can put a n
 
 Counts the amount and type of player enemies (that your squad hits or is hit by) in an arcdps fight instance (resets when arcdps does).
 
-Counts the amount of enemies you hit (tags == bags).
+Counts the amount of enemies you hit (more tags = more bags).
 
 ![image](https://user-images.githubusercontent.com/113395677/222940654-ff55d512-85e5-42dc-a289-9075641ce6be.png)
 &nbsp;&nbsp;&nbsp;&nbsp;

@@ -352,9 +352,9 @@ struct s_profelite {
 };
 
 struct s_team_battle {
-	uint8_t total;
-	uint8_t total_hit;
-	std::array<s_profelite, DATA_ARRAY::LENGTH> profelites;
+	uint8_t total = 0;
+	uint8_t total_hit = 0;
+	std::array<s_profelite, DATA_ARRAY::LENGTH> profelites = std::array<s_profelite, DATA_ARRAY::LENGTH>();
 };
 
 std::mutex mtx;
@@ -480,13 +480,15 @@ void record_agent(const ag* agent, const uint16_t instid, const uint8_t iHit)
 	if (agent->team == 0)
 		return;
 
+	auto& team = team_history_map[agent->team];
+
 	if (ids.find(instid) != ids.end()) //if found
 	{
 		if (iHit && ids[instid] == false)
 		{
 			ids[instid] = true;
 			std::lock_guard<std::mutex>lock(mtx);
-			team_history_map[agent->team][cur_history_idx].total_hit++;
+			team[cur_history_idx].total_hit++;
 		}
 		return; //dont process found
 	}
@@ -494,7 +496,7 @@ void record_agent(const ag* agent, const uint16_t instid, const uint8_t iHit)
 	{
 		ids[instid] = true;
 		std::lock_guard<std::mutex>lock(mtx);
-		team_history_map[agent->team][cur_history_idx].total_hit++;
+		team[cur_history_idx].total_hit++;
 	}
 	else
 	{
@@ -504,16 +506,17 @@ void record_agent(const ag* agent, const uint16_t instid, const uint8_t iHit)
 	s_profelite pe(agent->prof & 0xFF, agent->elite & 0xFF);
 
 	std::lock_guard<std::mutex>lock(mtx);
-	if (team_history_map[agent->team][cur_history_idx].profelites[pe.idx].name != nullptr)
+	if (team[cur_history_idx].profelites[pe.idx].name != nullptr)
 	{
-		team_history_map[agent->team][cur_history_idx].profelites[pe.idx].count++;
+		team[cur_history_idx].profelites[pe.idx].count++;
 	}
 	else
 	{
 		pe.count = 1;
-		team_history_map[agent->team][cur_history_idx].profelites[pe.idx] = pe;
+		team[cur_history_idx].profelites[pe.idx] = pe;
 	}
-	team_history_map[agent->team][cur_history_idx].total++;
+
+	team[cur_history_idx].total++;
 	return;
 }
 
@@ -565,11 +568,11 @@ uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const cha
 				if (log_ended && (src->name == nullptr || dst->name == nullptr))
 				{
 					cur_history_idx = (cur_history_idx + 1) % MAX_HISTORY_SIZE;
+					std::lock_guard<std::mutex>lock(mtx);
 					for (auto& team : team_history_map)
 					{
 						if (team.second[cur_history_idx].total != 0)
 						{
-							std::lock_guard<std::mutex>lock(mtx);
 							team.second[cur_history_idx].total = 0;
 							team.second[cur_history_idx].total_hit = 0;
 							for(auto& profelite : team.second[cur_history_idx].profelites)
@@ -704,13 +707,12 @@ void imgui_team_class_bars()
 	uint8_t total = 0;
 	uint8_t total_hit = 0;
 	uint8_t total_disp = 0;
-	std::array<s_profelite, DATA_ARRAY::LENGTH> combatants_to_disp;
-
+	std::array<s_profelite, DATA_ARRAY::LENGTH> combatants_to_disp = std::array<s_profelite, DATA_ARRAY::LENGTH>();
 	{ //sort profelites with counts
 		std::lock_guard<std::mutex>lock(mtx);
 	 	total = team_history_map[selected_team][history_to_disp_idx].total;
 		total_hit = team_history_map[selected_team][history_to_disp_idx].total_hit;
-		for(auto& profelite : team_history_map[selected_team][history_to_disp_idx].profelites)
+		for(auto profelite : team_history_map[selected_team][history_to_disp_idx].profelites)
 		{
 			if (profelite.count != 0)
 			{
@@ -718,8 +720,9 @@ void imgui_team_class_bars()
 				total_disp++;
 			}
 		}
-		total_disp++;
 	}
+	if (total_disp == 0)
+		return;
 
 	std::sort(combatants_to_disp.begin(), combatants_to_disp.begin()+total_disp, [=](s_profelite& a, s_profelite& b)
 	{
@@ -739,6 +742,7 @@ void imgui_team_class_bars()
 		snprintf(&cstrings[cstrings_idx][0], 32, " %d %s ", profelite.count, profelite.name);
 		draw_bar((float)profelite.count/(float)cur_max, &cstrings[cstrings_idx++][0], color_array[1][profelite.prof]);
 	}
+
 	ImGui::PopStyleColor();
 }
 
@@ -900,7 +904,7 @@ arcdps_exports* mod_init() {
 	arc_exports.imguivers = IMGUI_VERSION_NUM;
 	arc_exports.size = sizeof(arcdps_exports);
 	arc_exports.out_name = "Know thy enemy";
-	arc_exports.out_build = "3.1";
+	arc_exports.out_build = "3.1.1";
 	arc_exports.imgui = imgui_proc;
 	arc_exports.wnd_nofilter = mod_wnd;
 	arc_exports.combat = mod_combat;

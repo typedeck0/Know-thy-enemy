@@ -767,9 +767,9 @@ uintptr_t imgui_proc(const uint32_t not_charsel_or_loading, const uint32_t hide_
 
 		if (ImGui::Begin("Know thy enemy", &enabled, wFlags))
 		{
-			std::lock_guard<std::mutex>lock(mtx);
 			if (team_history_map.size() != 0)
 			{
+				mtx.lock();
 				uint8_t cur_max = 0;
 				if (override_tab_max_switch == false)
 				{
@@ -801,6 +801,8 @@ uintptr_t imgui_proc(const uint32_t not_charsel_or_loading, const uint32_t hide_
 					ImGui::PopStyleColor();
 					ImGui::SameLine();
 				}
+				s_team_battle battle_to_disp = team_history_map[tab_teamid][history_to_disp_idx];
+				mtx.unlock();
 				ImGui::PopStyleVar();
 				ImGui::NewLine();
 				ImVec2 upper_left = ImGui::GetCursorScreenPos();
@@ -814,7 +816,7 @@ uintptr_t imgui_proc(const uint32_t not_charsel_or_loading, const uint32_t hide_
 				ImGui::GetWindowDrawList()->AddRectFilled(upper_left, lower_right, ImGui::ColorConvertFloat4ToU32(col));
 				restore_point.y += 2;
 				ImGui::SetCursorPos(restore_point);
-				imgui_team_class_bars(team_history_map[tab_teamid][history_to_disp_idx]);
+				imgui_team_class_bars(battle_to_disp);
 			}
 			else
 			{
@@ -822,6 +824,7 @@ uintptr_t imgui_proc(const uint32_t not_charsel_or_loading, const uint32_t hide_
 				ImGui::Separator();
 				ImGui::Text("No hits");
 			}
+
 
 			if( ImGui::BeginPopupContextWindow(NULL, 1))
 			{
@@ -928,7 +931,7 @@ arcdps_exports* mod_init() {
 	arc_exports.imguivers = IMGUI_VERSION_NUM;
 	arc_exports.size = sizeof(arcdps_exports);
 	arc_exports.out_name = "Know thy enemy";
-	arc_exports.out_build = "3.1.1";
+	arc_exports.out_build = "3.2";
 	arc_exports.imgui = imgui_proc;
 	arc_exports.wnd_nofilter = mod_wnd;
 	arc_exports.combat = mod_combat;

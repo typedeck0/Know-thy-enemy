@@ -1,4 +1,4 @@
-#include <unordered_map>
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <mutex>
 #include <algorithm>
@@ -7,6 +7,7 @@
 #include <sstream>
 #include <fstream>
 #include <array>
+#include <unordered_map>
 
 /* combat state change */
 enum cbtstatechange {
@@ -138,41 +139,41 @@ namespace DATA_ARRAY
 enum LAYOUT : uint8_t
 {
 	Guardian,
-	Warrior,
-	Engineer,
-	Ranger,
-	Thief,
-	Elementalist,
-	Mesmer,
-	Necromancer,
-	Revenant,
-	Druid,
-	Daredevil,
-	Berserker,
 	Dragonhunter,
-	Reaper,
-	Chronomancer,
-	Scrapper,
-	Tempest,
-	Herald,
-	Soulbeast,
-	Weaver,
-	Holosmith,
-	Deadeye,
-	Mirage,
-	Scourge,
-	Spellbreaker,
 	Firebrand,
-	Renegade,
-	Harbinger,
 	Willbender,
-	Virtuoso,
-	Catalyst,
+	Warrior,
+	Berserker,
+	Spellbreaker,
 	Bladesworn,
-	Vindicator,
+	Engineer,
+	Scrapper,
+	Holosmith,
 	Mechanist,
-	Specter,
+	Ranger,
+	Druid,
+	Soulbeast,
 	Untamed,
+	Thief,
+	Daredevil,
+	Deadeye,
+	Specter,
+	Elementalist,
+	Tempest,
+	Weaver,
+	Catalyst,
+	Mesmer,
+	Chronomancer,
+	Mirage,
+	Virtuoso,
+	Necromancer,
+	Reaper,
+	Scourge,
+	Harbinger,
+	Revenant,
+	Herald,
+	Renegade,
+	Vindicator,
 	Unknown,
 	LENGTH
 };
@@ -372,7 +373,8 @@ const uint8_t MAX_TOTAL_STRINGS = 64;
 bool mod_key1 = false;
 bool mod_key2 = false;
 ImGuiWindowFlags wFlags = 0;
-
+uint16_t tab_teamid = 0;
+bool override_tab_max_switch = false;
 
 char* arcvers;
 extern "C" __declspec(dllexport) void* get_init_addr(char* arcversion, ImGuiContext* imguictx, void* id3dptr, HANDLE arcdll, void* mallocfn, void* freefn, uint32_t d3dversion);
@@ -395,7 +397,6 @@ std::unordered_map<uint16_t, std::array<s_team_battle, MAX_HISTORY_SIZE>> team_h
 int history_radio_state = 0;
 int cur_history_idx = 0;
 int history_to_disp_idx = 0;
-uint16_t selected_team = 0;
 
 /* dll attach -- from winapi */
 void dll_init(const HANDLE hModule) {
@@ -487,7 +488,6 @@ void record_agent(const ag* agent, const uint16_t instid, const uint8_t iHit)
 		if (iHit && ids[instid] == false)
 		{
 			ids[instid] = true;
-			std::lock_guard<std::mutex>lock(mtx);
 			team[cur_history_idx].total_hit++;
 		}
 		return; //dont process found
@@ -495,7 +495,6 @@ void record_agent(const ag* agent, const uint16_t instid, const uint8_t iHit)
 	else if (iHit) //process unfound
 	{
 		ids[instid] = true;
-		std::lock_guard<std::mutex>lock(mtx);
 		team[cur_history_idx].total_hit++;
 	}
 	else
@@ -505,7 +504,6 @@ void record_agent(const ag* agent, const uint16_t instid, const uint8_t iHit)
 
 	s_profelite pe(agent->prof & 0xFF, agent->elite & 0xFF);
 
-	std::lock_guard<std::mutex>lock(mtx);
 	if (team[cur_history_idx].profelites[pe.idx].name != nullptr)
 	{
 		team[cur_history_idx].profelites[pe.idx].count++;
@@ -559,16 +557,18 @@ uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const cha
 	{
 		if (ev)
 		{
-			if (selected_team != 0 && ev->is_statechange == CBTS_LOGEND)
+			if (team_history_map.size() != 0 && ev->is_statechange == CBTS_LOGEND)
+			{
 				log_ended = true;
+			}
 			if (ev->is_activation || ev->is_buffremove || ev->is_statechange || ev->buff || src->elite == 0xFFFFFFFF || dst->elite == 0xFFFFFFFF || src->prof == 0 || dst->prof == 0)
 				return 0;
 			if (src && dst)
 			{
+				std::lock_guard<std::mutex>lock(mtx);
 				if (log_ended && (src->name == nullptr || dst->name == nullptr))
 				{
 					cur_history_idx = (cur_history_idx + 1) % MAX_HISTORY_SIZE;
-					std::lock_guard<std::mutex>lock(mtx);
 					for (auto& team : team_history_map)
 					{
 						if (team.second[cur_history_idx].total != 0)
@@ -585,6 +585,7 @@ uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const cha
 						history_radio_state = 0;
 					}
 					log_ended = false;
+					override_tab_max_switch = false;
 				}
 
 				if (src->name == nullptr)
@@ -652,7 +653,7 @@ void draw_bar(const float frac, const char* text, const ImVec4& color)
 
 void draw_history_menu()
 {
-	if(selected_team == 0)
+	if(team_history_map.size() == 0)
 	{
 		ImGui::Text("No data...");
 	}
@@ -702,29 +703,12 @@ void draw_style_menu()
 	}
 }
 
-void imgui_team_class_bars()
+void imgui_team_class_bars(const s_team_battle& team_combatants_to_disp)
 {
-	uint8_t total = 0;
-	uint8_t total_hit = 0;
-	uint8_t total_disp = 0;
-	std::array<s_profelite, DATA_ARRAY::LENGTH> combatants_to_disp = std::array<s_profelite, DATA_ARRAY::LENGTH>();
-	{ //sort profelites with counts
-		std::lock_guard<std::mutex>lock(mtx);
-	 	total = team_history_map[selected_team][history_to_disp_idx].total;
-		total_hit = team_history_map[selected_team][history_to_disp_idx].total_hit;
-		for(auto profelite : team_history_map[selected_team][history_to_disp_idx].profelites)
-		{
-			if (profelite.count != 0)
-			{
-				combatants_to_disp[total_disp] = profelite; 
-				total_disp++;
-			}
-		}
-	}
-	if (total_disp == 0)
-		return;
-
-	std::sort(combatants_to_disp.begin(), combatants_to_disp.begin()+total_disp, [=](s_profelite& a, s_profelite& b)
+	std::array<s_profelite, DATA_ARRAY::LENGTH> combatants_to_disp = team_combatants_to_disp.profelites;
+	uint8_t total = team_combatants_to_disp.total;
+	uint8_t total_hit = team_combatants_to_disp.total_hit;
+	std::sort(combatants_to_disp.begin(), combatants_to_disp.end(), [=](s_profelite& a, s_profelite& b)
 	{
 		return a.count > b.count;
 	});
@@ -735,7 +719,7 @@ void imgui_team_class_bars()
 	draw_bar(1.f, &cstrings[cstrings_idx++][0], ImGui::GetStyleColorVec4(ImGuiCol_PlotHistogram));
 
 	uint16_t cur_max = combatants_to_disp[0].count;
-	for (s_profelite& profelite : combatants_to_disp)
+	for (auto& profelite : combatants_to_disp)
 	{
 		if (profelite.count == 0) //shortstop
 			break;
@@ -777,26 +761,66 @@ uintptr_t imgui_proc(const uint32_t not_charsel_or_loading, const uint32_t hide_
 			ImGui::PushStyleColor(ImGuiCol_TitleBg, ImVec4(color.x, color.y, color.z, 0.0)); 
 			ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ImVec4(color.x, color.y, color.z, 0.0)); 
 			made_title_invis = true;
-
 		}
 
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(100, 10));
 
 		if (ImGui::Begin("Know thy enemy", &enabled, wFlags))
 		{
-			if (ImGui::BeginTabBar("MyTabBar##fte", 0))
+			std::lock_guard<std::mutex>lock(mtx);
+			if (team_history_map.size() != 0)
 			{
-				for (auto& team : team_history_map)
+				uint8_t cur_max = 0;
+				if (override_tab_max_switch == false)
 				{
-					push_new_team_name(team.first);
-					if (ImGui::BeginTabItem(&cstrings[cstrings_idx++][0]))
+					for (auto& team : team_history_map)
 					{
-						selected_team = team.first;
-						imgui_team_class_bars();
-						ImGui::EndTabItem();
+						if (team.second[history_to_disp_idx].total > cur_max)
+						{
+							cur_max = team.second[history_to_disp_idx].total;
+							tab_teamid = team.first;
+						}
 					}
 				}
-				ImGui::EndTabBar();
+				ImGuiStyle style = ImGui::GetStyle();
+				ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, 2));
+				for (auto& team : team_history_map)
+				{
+					ImVec4 col;
+					if (team.first == tab_teamid)
+						col = ImGui::GetStyleColorVec4(ImGuiCol_TabActive);
+					else
+						col = ImGui::GetStyleColorVec4(ImGuiCol_Tab);
+					ImGui::PushStyleColor(ImGuiCol_Button, col);
+					push_new_team_name(team.first);
+					if (ImGui::Button(&cstrings[cstrings_idx++][0]))
+					{
+						override_tab_max_switch = true;
+						tab_teamid = team.first;
+					}
+					ImGui::PopStyleColor();
+					ImGui::SameLine();
+				}
+				ImGui::PopStyleVar();
+				ImGui::NewLine();
+				ImVec2 upper_left = ImGui::GetCursorScreenPos();
+				ImVec2 restore_point = ImGui::GetCursorPos();
+				upper_left.y -= 4;
+				upper_left.x -= 2;
+				ImVec2 lower_right = upper_left;
+				lower_right.x += ImGui::GetContentRegionAvail().x + 2;
+				lower_right.y += 1;
+				ImVec4 col = ImGui::GetStyleColorVec4(ImGuiCol_TabActive);
+				ImGui::GetWindowDrawList()->AddRectFilled(upper_left, lower_right, ImGui::ColorConvertFloat4ToU32(col));
+				restore_point.y += 2;
+				ImGui::SetCursorPos(restore_point);
+				imgui_team_class_bars(team_history_map[tab_teamid][history_to_disp_idx]);
+			}
+			else
+			{
+				ImGui::Text("No teams");
+				ImGui::Separator();
+				ImGui::Text("No hits");
 			}
 
 			if( ImGui::BeginPopupContextWindow(NULL, 1))

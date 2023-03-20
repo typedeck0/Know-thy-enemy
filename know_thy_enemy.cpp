@@ -179,12 +179,51 @@ enum LAYOUT : uint8_t
 };
 }
 
+const std::array<const char[16], DATA_ARRAY::LENGTH> pe_name_lut = {
+	"Guardian",
+	"Dragonhunter",
+	"Firebrand",
+	"Willbender",
+	"Warrior",
+	"Berserker",
+	"Spellbreaker",
+	"Bladesworn",
+	"Engineer",
+	"Scrapper",
+	"Holosmith",
+	"Mechanist",
+	"Ranger",
+	"Druid",
+	"Soulbeast",
+	"Untamed",
+	"Thief",
+	"Daredevil",
+	"Deadeye",
+	"Specter",
+	"Elementalist",
+	"Tempest",
+	"Weaver",
+	"Catalyst",
+	"Mesmer",
+	"Chronomancer",
+	"Mirage",
+	"Virtuoso",
+	"Necromancer",
+	"Reaper",
+	"Scourge",
+	"Harbinger",
+	"Revenant",
+	"Herald",
+	"Renegade",
+	"Vindicator",
+	"Unknown",
+};
+
 struct s_profelite {
 	uint8_t prof = 0;
 	uint8_t elite = 0;
 	uint8_t idx = 0;
 	uint8_t count = 0;
-	char* name = nullptr;
 	s_profelite() {}
 	s_profelite(uint8_t _prof, uint8_t _elite)
 	{
@@ -196,156 +235,118 @@ struct s_profelite {
 			switch (_prof)
 			{
 			case 1: 
-				name = "Guardian";
 				idx = DATA_ARRAY::Guardian;
 				return;
 			case 2: 
-				name = "Warrior";
 				idx = DATA_ARRAY::Warrior;
 				return;
 			case 3: 
-				name = "Engineer";
 				idx = DATA_ARRAY::Engineer;
 				return;
 			case 4: 
-				name = "Ranger";
 				idx = DATA_ARRAY::Ranger;
 				return;
 			case 5:  
-				name = "Thief";
 				idx = DATA_ARRAY::Thief;
 				return;
 			case 6:  
-				name = "Elementalist";
 				idx = DATA_ARRAY::Elementalist;
 				return;
 			case 7:  
-				name = "Mesmer";
 				idx = DATA_ARRAY::Mesmer;
 				return;
 			case 8:  
-				name = "Necromancer";
 				idx = DATA_ARRAY::Necromancer;
 				return;
 			case 9:  
-				name = "Revenant";
 				idx = DATA_ARRAY::Revenant;
 				return;
 			default: 
-				name = "Unknown";
 				idx = DATA_ARRAY::Unknown;
 				return;
 			}
 		case 5:	
-			name = "Druid";
 			idx = DATA_ARRAY::Druid;
 			return;
 		case 7:	
-			name = "Daredevil";
 			idx = DATA_ARRAY::Daredevil;
 			return;
 		case 18:
-			name = "Berserker";
 			idx = DATA_ARRAY::Berserker;
 			return;
 		case 27:
-			name = "Dragonhunter";
 			idx = DATA_ARRAY::Dragonhunter;
 			return;
 		case 34:
-			name = "Reaper";
 			idx = DATA_ARRAY::Reaper;
 			return;
 		case 40:
-			name = "Chronomancer";
 			idx = DATA_ARRAY::Chronomancer;
 			return;
 		case 43:
-			name = "Scrapper";
 			idx = DATA_ARRAY::Scrapper;
 			return;
 		case 48:
-			name = "Tempest";
 			idx = DATA_ARRAY::Tempest;
 			return;
 		case 52:
-			name = "Herald";
 			idx = DATA_ARRAY::Herald;
 			return;
 		case 55:
-			name = "Soulbeast";
 			idx = DATA_ARRAY::Soulbeast;
 			return;
 		case 56:
-			name = "Weaver";
 			idx = DATA_ARRAY::Weaver;
 			return;
 		case 57:
-			name = "Holosmith";
 			idx = DATA_ARRAY::Holosmith;
 			return;
 		case 58:
-			name = "Deadeye";
 			idx = DATA_ARRAY::Deadeye;
 			return;
 		case 59:
-			name = "Mirage";
 			idx = DATA_ARRAY::Mirage;
 			return;
 		case 60:
-			name = "Scourge";
 			idx = DATA_ARRAY::Scourge;
 			return;
 		case 61:
-			name = "Spellbreaker";
 			idx = DATA_ARRAY::Spellbreaker;
 			return;
 		case 62:
-			name = "Firebrand";
 			idx = DATA_ARRAY::Firebrand;
 			return;
 		case 63:
-			name = "Renegade";
 			idx = DATA_ARRAY::Renegade;
 			return;
 		case 64:
-			name = "Harbinger";
 			idx = DATA_ARRAY::Harbinger;
 			return;
 		case 65:
-			name = "Willbender";
 			idx = DATA_ARRAY::Willbender;
 			return;
 		case 66:
-			name = "Virtuoso";
 			idx = DATA_ARRAY::Virtuoso;
 			return;
 		case 67:
-			name = "Catalyst";
 			idx = DATA_ARRAY::Catalyst;
 			return;
 		case 68:
-			name = "Bladesworn";
 			idx = DATA_ARRAY::Bladesworn;
 			return;
 		case 69:
-			name = "Vindicator";
 			idx = DATA_ARRAY::Vindicator;
 			return;
 		case 70:
-			name = "Mechanist";
 			idx = DATA_ARRAY::Mechanist;
 			return;
 		case 71:
-			name = "Specter";
 			idx = DATA_ARRAY::Specter;
 			return;
 		case 72:
-			name = "Untamed";
 			idx = DATA_ARRAY::Untamed;
 			return;
 		default:
-			name = "Unknown";
 			idx = DATA_ARRAY::Unknown;
 			return;
 		}
@@ -476,7 +477,7 @@ uintptr_t mod_wnd(const HWND hWnd, const UINT uMsg, const WPARAM wParam, const L
 	return uMsg;
 }
 
-void record_agent(const ag* agent, const uint16_t instid, const uint8_t iHit)
+void record_agent(const ag* agent, const uint16_t instid, const bool iHit)
 {
 	if (agent->team == 0)
 		return;
@@ -485,35 +486,21 @@ void record_agent(const ag* agent, const uint16_t instid, const uint8_t iHit)
 
 	if (ids.find(instid) != ids.end()) //if found
 	{
-		if (iHit && ids[instid] == false)
-		{
-			ids[instid] = true;
-			team[cur_history_idx].total_hit++;
-		}
+		team[cur_history_idx].total_hit += (iHit && !(ids[instid]));
+		ids[instid] = (iHit && !(ids[instid])) || ids[instid];
 		return; //dont process found
 	}
-	else if (iHit) //process unfound
-	{
-		ids[instid] = true;
-		team[cur_history_idx].total_hit++;
-	}
-	else
-	{
-		ids[instid] = false;
-	}
+	ids[instid] = iHit;
+	team[cur_history_idx].total_hit += ids[instid];
 
 	s_profelite pe(agent->prof & 0xFF, agent->elite & 0xFF);
 
-	if (team[cur_history_idx].profelites[pe.idx].name != nullptr)
+	if (team[cur_history_idx].profelites[pe.idx].prof == 0)
 	{
-		team[cur_history_idx].profelites[pe.idx].count++;
-	}
-	else
-	{
-		pe.count = 1;
 		team[cur_history_idx].profelites[pe.idx] = pe;
 	}
-
+		
+	team[cur_history_idx].profelites[pe.idx].count++;
 	team[cur_history_idx].total++;
 	return;
 }
@@ -540,62 +527,47 @@ bool log_ended = false;
 /* at least one participant will be party/squad or minion of, or a buff applied by squad in the case of buff remove. not all statechanges present, see evtc statechange enum */
 uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const char* skillname, const uint64_t id, const uint64_t revision) 
 {
-	if (!ev)
+	if (!ev && !src->elite && src->prof && dst->self) // we added ourselves, get outplayed fool
 	{
-		if (!src->elite) 
-		{
-			if (src->prof) 
-			{
-				if (dst->self)
-				{
-					toShow = isWvw();
-				}
-			}
-		}
+		toShow = isWvw();
 	}
-	if(enabled && toShow)
+	else if(ev && enabled && toShow)
 	{
-		if (ev)
+		log_ended = (team_history_map.size() != 0 && ev->is_statechange == CBTS_LOGEND) || log_ended;
+		if (ev->is_activation || ev->is_buffremove || ev->is_statechange || ev->buff || src->elite == 0xFFFFFFFF || dst->elite == 0xFFFFFFFF || src->prof == 0 || dst->prof == 0)
+			return 0;
+		if (src && dst)
 		{
-			if (team_history_map.size() != 0 && ev->is_statechange == CBTS_LOGEND)
+			std::lock_guard<std::mutex>lock(mtx);
+			if (log_ended && (src->name == nullptr || dst->name == nullptr))
 			{
-				log_ended = true;
-			}
-			if (ev->is_activation || ev->is_buffremove || ev->is_statechange || ev->buff || src->elite == 0xFFFFFFFF || dst->elite == 0xFFFFFFFF || src->prof == 0 || dst->prof == 0)
-				return 0;
-			if (src && dst)
-			{
-				std::lock_guard<std::mutex>lock(mtx);
-				if (log_ended && (src->name == nullptr || dst->name == nullptr))
+				cur_history_idx = (cur_history_idx + 1) % MAX_HISTORY_SIZE;
+				for (auto& team : team_history_map)
 				{
-					cur_history_idx = (cur_history_idx + 1) % MAX_HISTORY_SIZE;
-					for (auto& team : team_history_map)
+					if (team.second[cur_history_idx].total != 0)
 					{
-						if (team.second[cur_history_idx].total != 0)
+						team.second[cur_history_idx].total = 0;
+						team.second[cur_history_idx].total_hit = 0;
+						for(auto& profelite : team.second[cur_history_idx].profelites)
 						{
-							team.second[cur_history_idx].total = 0;
-							team.second[cur_history_idx].total_hit = 0;
-							for(auto& profelite : team.second[cur_history_idx].profelites)
-							{
-								profelite.count = 0;
-							}
+							profelite.count = 0;
 						}
-						ids.clear();
-						history_to_disp_idx = cur_history_idx;
-						history_radio_state = 0;
 					}
-					log_ended = false;
-					override_tab_max_switch = false;
+					ids.clear();
+					history_to_disp_idx = cur_history_idx;
+					history_radio_state = 0;
 				}
+				log_ended = false;
+				override_tab_max_switch = false;
+			}
 
-				if (src->name == nullptr)
-				{
-					record_agent(src, ev->src_instid, 0);
-				}
-				else if (dst->name == nullptr)
-				{
-					record_agent(dst, ev->dst_instid, src->self & 1);
-				}
+			if (src->name == nullptr)
+			{
+				record_agent(src, ev->src_instid, 0);
+			}
+			else if (dst->name == nullptr)
+			{
+				record_agent(dst, ev->dst_instid, src->self & 1);
 			}
 		}
 	}
@@ -723,7 +695,7 @@ void imgui_team_class_bars(const s_team_battle& team_combatants_to_disp)
 	{
 		if (profelite.count == 0) //shortstop
 			break;
-		snprintf(&cstrings[cstrings_idx][0], 32, " %d %s ", profelite.count, profelite.name);
+		snprintf(&cstrings[cstrings_idx][0], 32, " %d %s ", profelite.count, &pe_name_lut[profelite.idx]);
 		draw_bar((float)profelite.count/(float)cur_max, &cstrings[cstrings_idx++][0], color_array[1][profelite.prof]);
 	}
 
@@ -786,11 +758,9 @@ uintptr_t imgui_proc(const uint32_t not_charsel_or_loading, const uint32_t hide_
 				ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, 2));
 				for (auto& team : team_history_map)
 				{
-					ImVec4 col;
+					ImU32 col = ImGui::GetColorU32(ImGuiCol_Tab);
 					if (team.first == tab_teamid)
-						col = ImGui::GetStyleColorVec4(ImGuiCol_TabActive);
-					else
-						col = ImGui::GetStyleColorVec4(ImGuiCol_Tab);
+						col = ImGui::GetColorU32(ImGuiCol_TabActive);
 					ImGui::PushStyleColor(ImGuiCol_Button, col);
 					push_new_team_name(team.first);
 					if (ImGui::Button(&cstrings[cstrings_idx++][0]))
@@ -807,13 +777,13 @@ uintptr_t imgui_proc(const uint32_t not_charsel_or_loading, const uint32_t hide_
 				ImGui::NewLine();
 				ImVec2 upper_left = ImGui::GetCursorScreenPos();
 				ImVec2 restore_point = ImGui::GetCursorPos();
-				upper_left.y -= 4;
+				upper_left.y -= 3;
 				upper_left.x -= 2;
 				ImVec2 lower_right = upper_left;
-				lower_right.x += ImGui::GetContentRegionAvail().x + 2;
+				lower_right.x += ImGui::GetContentRegionAvail().x + 2 + 2;
 				lower_right.y += 1;
-				ImVec4 col = ImGui::GetStyleColorVec4(ImGuiCol_TabActive);
-				ImGui::GetWindowDrawList()->AddRectFilled(upper_left, lower_right, ImGui::ColorConvertFloat4ToU32(col));
+				ImU32 col = ImGui::GetColorU32(ImGuiCol_TabActive);
+				ImGui::GetWindowDrawList()->AddRectFilled(upper_left, lower_right, col);
 				restore_point.y += 2;
 				ImGui::SetCursorPos(restore_point);
 				imgui_team_class_bars(battle_to_disp);

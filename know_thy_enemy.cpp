@@ -219,6 +219,46 @@ const std::array<const char[16], DATA_ARRAY::LENGTH> pe_name_lut = {
 	"Unknown",
 };
 
+const std::array<const char[4], DATA_ARRAY::LENGTH> pe_short_name_lut = {
+	"Gdn",
+	"Dgh",
+	"Fbd",
+	"Wbd",
+	"War",
+	"Brs",
+	"Spb",
+	"Bds",
+	"Eng",
+	"Scr",
+	"Hls",
+	"Mec",
+	"Rgr",
+	"Dru",
+	"Slb",
+	"Unt",
+	"Thf",
+	"Dar",
+	"Ded",
+	"Spe",
+	"Ele",
+	"Tmp",
+	"Wea",
+	"Cat",
+	"Mes",
+	"Chr",
+	"Mir",
+	"Vir",
+	"Nec",
+	"Rea",
+	"Scg",
+	"Har",
+	"Rev",
+	"Her",
+	"Ren",
+	"Vin",
+	"Ukn"
+};
+
 struct s_profelite {
 	uint8_t prof = 0;
 	uint8_t elite = 0;
@@ -362,18 +402,23 @@ struct s_team_battle {
 std::mutex mtx;
 
 /* proto/globals */
-bool enabled = true;
-bool toShow = false;
-bool bTitleBg = true;
+struct settings {
+	uint32_t magic = 0xC0FFEE;
+	bool bEnabled = true;
+	ImGuiWindowFlags wFlags = 0;
+	bool bToShow = false;
+	bool bTitleBg = true;
+	bool bShowColumns = false;
+	bool bShortNames = false;
+};
 
-const uint8_t MAX_HISTORY_SIZE = 6;
+const uint8_t MAX_HISTORY_SIZE = 8; //power of 2
 const uint8_t MAX_STRING_SIZE = 32;
 const uint8_t MAX_TOTAL_STRINGS = 64;
 
 // int is_wvw_state = -1;
 bool mod_key1 = false;
 bool mod_key2 = false;
-ImGuiWindowFlags wFlags = 0;
 uint16_t tab_teamid = 0;
 bool override_tab_max_switch = false;
 
@@ -391,9 +436,9 @@ uint64_t(*get_key_settings)();
 
 const char* arccontext = nullptr;
 
-
 std::unordered_map<uint16_t, bool> ids = std::unordered_map<uint16_t, bool>();
 std::unordered_map<uint16_t, std::array<s_team_battle, MAX_HISTORY_SIZE>> team_history_map = std::unordered_map<uint16_t, std::array<s_team_battle, MAX_HISTORY_SIZE>>();
+settings kte_settings;
 
 int history_radio_state = 0;
 int cur_history_idx = 0;
@@ -441,7 +486,7 @@ uintptr_t mod_wnd(const HWND hWnd, const UINT uMsg, const WPARAM wParam, const L
 {
 	if ((get_ui_settings() >> 2) & 1)
 	{
-		wFlags |= ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
+		kte_settings.wFlags |= ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
 		if (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) 
 		{
 			uint64_t keys = get_key_settings();
@@ -470,10 +515,10 @@ uintptr_t mod_wnd(const HWND hWnd, const UINT uMsg, const WPARAM wParam, const L
 			}
 		}
 		if (mod_key1 && mod_key2)
-			wFlags &= ~(ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+			kte_settings.wFlags &= ~(ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
 	}
 	else
-		wFlags &= ~(ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+		kte_settings.wFlags &= ~(ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
 	return uMsg;
 }
 
@@ -529,9 +574,9 @@ uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const cha
 {
 	if (!ev && !src->elite && src->prof && dst->self) // we added ourselves, get outplayed fool
 	{
-		toShow = isWvw();
+		kte_settings.bToShow = isWvw();
 	}
-	else if(ev && enabled && toShow)
+	else if(ev && kte_settings.bEnabled && kte_settings.bToShow)
 	{
 		log_ended = (team_history_map.size() != 0 && ev->is_statechange == CBTS_LOGEND) || log_ended;
 		if (ev->is_activation || ev->is_buffremove || ev->is_statechange || ev->buff || src->elite == 0xFFFFFFFF || dst->elite == 0xFFFFFFFF || src->prof == 0 || dst->prof == 0)
@@ -541,7 +586,7 @@ uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const cha
 			std::lock_guard<std::mutex>lock(mtx);
 			if (log_ended && (src->name == nullptr || dst->name == nullptr))
 			{
-				cur_history_idx = (cur_history_idx + 1) % MAX_HISTORY_SIZE;
+				cur_history_idx = (cur_history_idx + 1) & (MAX_HISTORY_SIZE - 1);
 				for (auto& team : team_history_map)
 				{
 					if (team.second[cur_history_idx].total != 0)
@@ -576,23 +621,18 @@ uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const cha
 
 void options_end_proc(const char* windowname)
 {
-	ImGui::Checkbox("Know thy enemy##1cb", &enabled);
-	ImGui::NewLine();
+	ImGui::Checkbox("Know thy enemy##1cb", &kte_settings.bEnabled);
 	ImGui::Separator();
-	if (ImGui::Button("Reset settings##fte"))
+	if (ImGui::Button("Reset settings"))
 	{
-		enabled = true;
-		wFlags = 0;
-		bTitleBg = true;
+		kte_settings = settings();
 		std::wstring path = std::wstring(get_settings_path());
 		path = path.substr(0, path.find_last_of(L"\\")+1);
 		path.append(L"know_thy_enemy_settings.txt");
-		std::fstream file(path.c_str(), std::fstream::out | std::fstream::trunc);
+		std::fstream file(path.c_str(), std::fstream::out | std::fstream::trunc | std::ios::binary);
 		if (file.good())
 		{
-			file << "enabled=" << (enabled ? '1' : '0') << "\n";
-			file << "wFlags=" << std::to_string(wFlags) << "\n";
-			file << "titleTrans=" << (bTitleBg ? '1' : '0') << "\n";
+			file.write((char*)&kte_settings, sizeof(settings));
 		}
 		file.close();
 	}
@@ -602,10 +642,6 @@ void options_windows_proc(const char* windowname)
 {
 	// log_arc((char*)windowname);
 }
-
-
-char cstrings[MAX_TOTAL_STRINGS][MAX_STRING_SIZE] = {0}; //64 is good enough
-uint8_t cstrings_idx = 0;
 
 void draw_bar(const float frac, const char* text, const ImVec4& color)
 {
@@ -631,48 +667,48 @@ void draw_history_menu()
 	}
 	else
 	{
-		snprintf(&cstrings[cstrings_idx][0], 32, "Current ##fte");
-		if (ImGui::RadioButton(&cstrings[cstrings_idx++][0], history_radio_state == 0))
+		if (ImGui::RadioButton("Current", history_radio_state == 0))
 		{
 			history_radio_state = 0;
 			history_to_disp_idx = cur_history_idx;
 			ImGui::CloseCurrentPopup();
 		}
-		int past_history_idx = (cur_history_idx - 1 + MAX_HISTORY_SIZE) % MAX_HISTORY_SIZE;
+		int past_history_idx = (cur_history_idx - 1 + MAX_HISTORY_SIZE) & (MAX_HISTORY_SIZE - 1);
 		for(int i = 0; i < MAX_HISTORY_SIZE-1; i++)
 		{
-			snprintf(&cstrings[cstrings_idx][0], 32, "History %d##fte", i+1);
-			if(ImGui::RadioButton(&cstrings[cstrings_idx++][0], history_radio_state == (i+1)))
+			char temp[32] = {0};
+			snprintf(temp, 32, "History %d", i+1);
+			if(ImGui::RadioButton(temp, history_radio_state == (i+1)))
 			{
 				history_radio_state = i+1;
 				history_to_disp_idx = past_history_idx;
 				ImGui::CloseCurrentPopup();
 			}
-			past_history_idx = (past_history_idx - 1 + MAX_HISTORY_SIZE) % MAX_HISTORY_SIZE;
+			past_history_idx = (past_history_idx - 1 + MAX_HISTORY_SIZE) & (MAX_HISTORY_SIZE - 1);
 		}
 	}
 }
 
 void draw_style_menu()
 {
-	bool bTitlebar = (wFlags & ImGuiWindowFlags_NoTitleBar) == 0;
-	if (ImGui::Checkbox("title bar##kte", &bTitlebar))
+	bool bTitlebar = (kte_settings.wFlags & ImGuiWindowFlags_NoTitleBar) == 0;
+	if (ImGui::Checkbox("title bar", &bTitlebar))
 	{
-		wFlags ^= ImGuiWindowFlags_NoTitleBar;
+		kte_settings.wFlags ^= ImGuiWindowFlags_NoTitleBar;
 	}
-	bool bScrollbar = (wFlags & ImGuiWindowFlags_NoScrollbar) == 0;
-	if (ImGui::Checkbox("scroll bar##kte", &bScrollbar))
+	bool bScrollbar = (kte_settings.wFlags & ImGuiWindowFlags_NoScrollbar) == 0;
+	if (ImGui::Checkbox("scroll bar", &bScrollbar))
 	{
-		wFlags ^= ImGuiWindowFlags_NoScrollbar;
+		kte_settings.wFlags ^= ImGuiWindowFlags_NoScrollbar;
 	}
-	bool bBackground = (wFlags & ImGuiWindowFlags_NoBackground) == 0;
-	if (ImGui::Checkbox("background##kte", &bBackground))
+	bool bBackground = (kte_settings.wFlags & ImGuiWindowFlags_NoBackground) == 0;
+	if (ImGui::Checkbox("background", &bBackground))
 	{
-		wFlags ^= ImGuiWindowFlags_NoBackground;
+		kte_settings.wFlags ^= ImGuiWindowFlags_NoBackground;
 	}
-	if (ImGui::Checkbox("title bar background##kte", &bTitleBg))
-	{
-	}
+	ImGui::Checkbox("title bar background", &kte_settings.bTitleBg);
+	ImGui::Checkbox("use columns", &kte_settings.bShowColumns);
+	ImGui::Checkbox("use short names", &kte_settings.bShortNames);
 }
 
 void imgui_team_class_bars(const s_team_battle& team_combatants_to_disp)
@@ -687,47 +723,141 @@ void imgui_team_class_bars(const s_team_battle& team_combatants_to_disp)
 
 	ImGui::PushStyleColor(ImGuiCol_Text, color_array[0][4]);
 
-	snprintf(&cstrings[cstrings_idx][0], 32, " You hit %d/%d ", total_hit, total);
-	draw_bar(1.f, &cstrings[cstrings_idx++][0], ImGui::GetStyleColorVec4(ImGuiCol_PlotHistogram));
+	char temp[32] = {0};
+	snprintf(temp, 32, " Struck %d/%d", total_hit, total);
+	draw_bar(1.f, temp, ImGui::GetStyleColorVec4(ImGuiCol_PlotHistogram));
 
 	uint16_t cur_max = combatants_to_disp[0].count;
 	for (auto& profelite : combatants_to_disp)
 	{
 		if (profelite.count == 0) //shortstop
 			break;
-		snprintf(&cstrings[cstrings_idx][0], 32, " %d %s ", profelite.count, &pe_name_lut[profelite.idx]);
-		draw_bar((float)profelite.count/(float)cur_max, &cstrings[cstrings_idx++][0], color_array[1][profelite.prof]);
+		if (kte_settings.bShortNames)
+			snprintf(temp, 32, " %d %s", profelite.count, &pe_short_name_lut[profelite.idx]);
+		else
+			snprintf(temp, 32, " %d %s", profelite.count, &pe_name_lut[profelite.idx]);
+		draw_bar((float)profelite.count/(float)cur_max, temp, color_array[1][profelite.prof]);
 	}
 
 	ImGui::PopStyleColor();
 }
 
-void push_new_team_name(const uint16_t team_id)
+void push_new_team_name(char* buf, const uint16_t team_id)
 {
 	switch (team_id)
 	{
 	case 432:
-		snprintf(&cstrings[cstrings_idx][0], 32, "Blue##fte");
+		snprintf(buf, 32, "Blue");
 		break;
 	case 2739:
-		snprintf(&cstrings[cstrings_idx][0], 32, "Green##fte");
+		snprintf(buf, 32, "Green");
 		break;
 	case 705:
-		snprintf(&cstrings[cstrings_idx][0], 32, "Red##fte");
+		snprintf(buf, 32, "Red");
 		break;
 	default:
-		snprintf(&cstrings[cstrings_idx][0], 32, "Team %d##fte", team_id);
+		snprintf(buf, 32, "Team %d", team_id);
 		break;
 	}
 }
 
+void draw_teams_tabbed()
+{
+	ImGuiStyle style = ImGui::GetStyle();
+	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, 1));
+	ImU32 col = ImGui::GetColorU32(ImGuiCol_TableRowBg);
+	ImGui::PushStyleColor(ImGuiCol_TableHeaderBg, col);
+	mtx.lock();
+	uint8_t cur_max = 0;
+	if (override_tab_max_switch == false)
+	{
+		for (auto& team : team_history_map)
+		{
+			if (team.second[history_to_disp_idx].total > cur_max)
+			{
+				cur_max = team.second[history_to_disp_idx].total;
+				tab_teamid = team.first;
+			}
+		}
+	}
+	if (ImGui::BeginTable("tabtable", 1, ImGuiTableFlags_BordersInner | ImGuiTableFlags_ContextMenuInBody))
+	{
+		ImGui::TableNextRow();
+		ImGui::TableSetColumnIndex(0);
+		for (auto& team : team_history_map)
+		{
+			col = ImGui::GetColorU32(ImGuiCol_Tab);
+			if (team.first == tab_teamid)
+				col = ImGui::GetColorU32(ImGuiCol_TabActive);
+			ImGui::PushStyleColor(ImGuiCol_Button, col);
+			char temp[32] = {0};
+			push_new_team_name(temp, team.first);
+			if (ImGui::Button(temp))
+			{
+				override_tab_max_switch = true;
+				tab_teamid = team.first;
+			}
+			ImGui::PopStyleColor();
+			ImGui::SameLine();
+		}
+		ImGui::NewLine();
+
+		ImGui::TableNextRow();
+		ImGui::TableSetColumnIndex(0);
+		imgui_team_class_bars(team_history_map[tab_teamid][history_to_disp_idx]);
+		ImGui::EndTable();
+	}
+	mtx.unlock();
+	ImGui::PopStyleColor();
+	ImGui::PopStyleVar();
+}
+
+void draw_teams_columns()
+{
+	ImGuiStyle style = ImGui::GetStyle();
+	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, 1));
+	ImU32 col = ImGui::GetColorU32(ImGuiCol_Tab);
+	ImGui::PushStyleColor(ImGuiCol_TableHeaderBg, col);
+	mtx.lock();
+	if (ImGui::BeginTable("coltable", team_history_map.size(), ImGuiTableFlags_BordersInner | ImGuiTableFlags_ContextMenuInBody))
+	{
+		char temp[32] = {0};
+		for (auto& team : team_history_map)
+		{
+			push_new_team_name(temp, team.first);
+			ImGui::TableSetupColumn(temp, ImGuiTableColumnFlags_NoSort | ImGuiTableColumnFlags_WidthStretch);
+		}
+		ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
+		int column = 0;
+		for (auto& team : team_history_map)
+		{
+			ImGui::TableSetColumnIndex(column);
+			const char* column_name = ImGui::TableGetColumnName(column); // Retrieve name passed to TableSetupColumn()
+			ImGui::Text(column_name);
+			column++;
+		}
+
+		ImGui::TableNextRow();
+		column = 0;
+		for (auto& team : team_history_map)
+		{
+			ImGui::TableSetColumnIndex(column);
+			imgui_team_class_bars(team_history_map[team.first][history_to_disp_idx]);
+			column++;
+		}
+		ImGui::EndTable();
+	}
+	mtx.unlock();
+	ImGui::PopStyleColor();
+	ImGui::PopStyleVar();
+}
+
 uintptr_t imgui_proc(const uint32_t not_charsel_or_loading, const uint32_t hide_if_combat_or_ooc)
 {
-	if (not_charsel_or_loading && enabled && toShow)
+	if (not_charsel_or_loading && kte_settings.bEnabled && kte_settings.bToShow)
 	{
-		cstrings_idx = 0;
 		bool made_title_invis = false;
-		if (!bTitleBg)
+		if (!kte_settings.bTitleBg)
 		{
 			ImVec4 color = ImGui::GetStyleColorVec4(ImGuiCol_TitleBg); //xyzw == RGBA
 			ImGui::PushStyleColor(ImGuiCol_TitleBg, ImVec4(color.x, color.y, color.z, 0.0)); 
@@ -737,56 +867,16 @@ uintptr_t imgui_proc(const uint32_t not_charsel_or_loading, const uint32_t hide_
 
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(100, 10));
 
-		if (ImGui::Begin("Know thy enemy", &enabled, wFlags))
+		ImGui::PushID("KTE");
+		if (ImGui::Begin("Know thy enemy", &kte_settings.bEnabled, kte_settings.wFlags))
 		{
-			if (team_history_map.size() != 0)
+			if (!team_history_map.empty() && !kte_settings.bShowColumns)
 			{
-				mtx.lock();
-				uint8_t cur_max = 0;
-				if (override_tab_max_switch == false)
-				{
-					for (auto& team : team_history_map)
-					{
-						if (team.second[history_to_disp_idx].total > cur_max)
-						{
-							cur_max = team.second[history_to_disp_idx].total;
-							tab_teamid = team.first;
-						}
-					}
-				}
-				ImGuiStyle style = ImGui::GetStyle();
-				ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, 2));
-				for (auto& team : team_history_map)
-				{
-					ImU32 col = ImGui::GetColorU32(ImGuiCol_Tab);
-					if (team.first == tab_teamid)
-						col = ImGui::GetColorU32(ImGuiCol_TabActive);
-					ImGui::PushStyleColor(ImGuiCol_Button, col);
-					push_new_team_name(team.first);
-					if (ImGui::Button(&cstrings[cstrings_idx++][0]))
-					{
-						override_tab_max_switch = true;
-						tab_teamid = team.first;
-					}
-					ImGui::PopStyleColor();
-					ImGui::SameLine();
-				}
-				s_team_battle battle_to_disp = team_history_map[tab_teamid][history_to_disp_idx];
-				mtx.unlock();
-				ImGui::PopStyleVar();
-				ImGui::NewLine();
-				ImVec2 upper_left = ImGui::GetCursorScreenPos();
-				ImVec2 restore_point = ImGui::GetCursorPos();
-				upper_left.y -= 3;
-				upper_left.x -= 2;
-				ImVec2 lower_right = upper_left;
-				lower_right.x += ImGui::GetContentRegionAvail().x + 2 + 2;
-				lower_right.y += 1;
-				ImU32 col = ImGui::GetColorU32(ImGuiCol_TabActive);
-				ImGui::GetWindowDrawList()->AddRectFilled(upper_left, lower_right, col);
-				restore_point.y += 2;
-				ImGui::SetCursorPos(restore_point);
-				imgui_team_class_bars(battle_to_disp);
+				draw_teams_tabbed();
+			}
+			else if (!team_history_map.empty() && kte_settings.bShowColumns)
+			{
+				draw_teams_columns();
 			}
 			else
 			{
@@ -795,17 +885,16 @@ uintptr_t imgui_proc(const uint32_t not_charsel_or_loading, const uint32_t hide_
 				ImGui::Text("No hits");
 			}
 
-
-			if( ImGui::BeginPopupContextWindow(NULL, 1))
+			if(ImGui::BeginPopupContextWindow(NULL, ImGuiPopupFlags_MouseButtonRight))
 			{
 				ImGuiStyle style = ImGui::GetStyle();
 				ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, 0));
-				if (ImGui::BeginMenu("History##fte"))
+				if (ImGui::BeginMenu("History"))
 				{
 					draw_history_menu();
 					ImGui::EndMenu();
 				}
-				if (ImGui::BeginMenu("Style##fte"))
+				if (ImGui::BeginMenu("Style"))
 				{
 					draw_style_menu();
 					ImGui::EndMenu();
@@ -815,6 +904,7 @@ uintptr_t imgui_proc(const uint32_t not_charsel_or_loading, const uint32_t hide_
 			}
 		}
 		ImGui::End();
+		ImGui::PopID();
 		ImGui::PopStyleVar();
 		if (made_title_invis)
 		{
@@ -828,13 +918,11 @@ void save_kte_settings()
 {
 	std::wstring path = std::wstring(get_settings_path());
 	path = path.substr(0, path.find_last_of(L"\\")+1);
-	path.append(L"know_thy_enemy_settings.txt");
-	std::fstream file(path.c_str(), std::fstream::out | std::fstream::trunc);
+	path.append(L"know_thy_enemy_settings.bin");
+	std::fstream file(path.c_str(), std::fstream::out | std::fstream::trunc | std::ios::binary);
 	if (file.good())
 	{
-		file << "enabled=" << (enabled ? '1' : '0') << "\n";
-		file << "wFlags=" << std::to_string(wFlags) << "\n";
-		file << "titleTrans=" << (bTitleBg ? '1' : '0') << "\n";
+		file.write((char*)&kte_settings, sizeof(settings));
 	}
 	file.close();
 }
@@ -844,32 +932,15 @@ void init_kte_settings()
 {
 	std::wstring path = std::wstring(get_settings_path());
 	path = path.substr(0, path.find_last_of(L"\\")+1);
-	path.append(L"know_thy_enemy_settings.txt");
-	std::fstream file(path.c_str(), std::fstream::in | std::fstream::out | std::fstream::app);
+	path.append(L"know_thy_enemy_settings.bin");
+	std::fstream file(path.c_str(), std::fstream::in | std::fstream::out | std::ios::binary);
 	std::string line;
 	bool success = false;
 	if (file.good())
 	{
-		while (std::getline(file, line))
-		{
-			auto sep = line.find_first_of('=');
-			std::string key = line.substr(0, sep);
-			if (key.compare("enabled") == 0)
-			{
-				char val = line.substr(sep+1, line.size() - key.size() - 1)[0];
-				enabled = (val == '1');
-			}
-			else if(key.compare("wFlags") == 0)
-			{
-				wFlags = std::stoi(line.substr(sep+1, line.size() - key.size() - 1));
-			}
-			else if (key.compare("titleTrans") == 0)
-			{
-				char val = line.substr(sep+1, line.size() - key.size() - 1)[0];
-				bTitleBg = (val == '1');
-			}
-
-		}
+		file.read((char*)&kte_settings, sizeof(settings));
+		if(kte_settings.magic == 0xC0FFEE)
+			success = true;
 	}
 	if (!success)
 	{
@@ -901,7 +972,7 @@ arcdps_exports* mod_init() {
 	arc_exports.imguivers = IMGUI_VERSION_NUM;
 	arc_exports.size = sizeof(arcdps_exports);
 	arc_exports.out_name = "Know thy enemy";
-	arc_exports.out_build = "3.2";
+	arc_exports.out_build = "3.3";
 	arc_exports.imgui = imgui_proc;
 	arc_exports.wnd_nofilter = mod_wnd;
 	arc_exports.combat = mod_combat;

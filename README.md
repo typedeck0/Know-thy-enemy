@@ -13,6 +13,9 @@ Counts the amount of enemies you hit (more tags = more bags).
 &nbsp;&nbsp;&nbsp;&nbsp;
 ![image](https://user-images.githubusercontent.com/113395677/226063666-4c092d1b-0017-421c-9d99-901a53ae5b00.png)
 
+Columns and small names options.
+
+![image](https://user-images.githubusercontent.com/113395677/229323981-305f5725-00c3-439d-a431-a8ee919c032b.png)
 
 ## Build
 Clone. Download [ImGui 1.8](https://github.com/ocornut/imgui/tree/v1.80). Extract the Imgui to the cloned directory. Run the bat file. The dll will be in the out directory.

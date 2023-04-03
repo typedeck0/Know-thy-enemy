@@ -32,7 +32,7 @@ move the know_thy_enemy.dll([releases](../../releases)) to the folder where the 
 
 then in-game open the arcdps options window (alt-shift-t)
 
-in the Interface tab under Windows should be an option to enable the extension
+Under the "Extensions" tab, you will see a sub page called Know thy enemy, where you can enable and disable the extension.
 
 
 ## Use:

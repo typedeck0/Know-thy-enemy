@@ -625,9 +625,9 @@ uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const cha
 void options_end_proc(const char* windowname)
 {
 	ImGui::Checkbox("Know thy enemy##1cb", &kte_settings.bEnabled);
-	ImGui::InputInt("Red team: ", (int *)&kte_settings.red_team, 0, 0);
-	ImGui::InputInt("Green team: ", (int *)&kte_settings.green_team, 0, 0);
-	ImGui::InputInt("Blue team: ", (int *)&kte_settings.blue_team, 0, 0);
+	ImGui::InputInt("Red team##kte", (int *)&kte_settings.red_team, 0, 0);
+	ImGui::InputInt("Green team##kte", (int *)&kte_settings.green_team, 0, 0);
+	ImGui::InputInt("Blue team##kte", (int *)&kte_settings.blue_team, 0, 0);
 	ImGui::Separator();
 	if (ImGui::Button("Reset settings"))
 	{
@@ -984,7 +984,7 @@ arcdps_exports* mod_init() {
 	arc_exports.imguivers = IMGUI_VERSION_NUM;
 	arc_exports.size = sizeof(arcdps_exports);
 	arc_exports.out_name = "Know thy enemy";
-	arc_exports.out_build = "3.3";
+	arc_exports.out_build = "3.4";
 	arc_exports.imgui = imgui_proc;
 	arc_exports.wnd_nofilter = mod_wnd;
 	arc_exports.combat = mod_combat;

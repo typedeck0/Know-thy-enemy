@@ -410,6 +410,9 @@ struct settings {
 	bool bTitleBg = true;
 	bool bShowColumns = false;
 	bool bShortNames = false;
+	unsigned int red_team = 705;
+	unsigned int green_team = 2739;
+	unsigned int blue_team = 432;
 };
 
 const uint8_t MAX_HISTORY_SIZE = 8; //power of 2
@@ -622,6 +625,9 @@ uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const cha
 void options_end_proc(const char* windowname)
 {
 	ImGui::Checkbox("Know thy enemy##1cb", &kte_settings.bEnabled);
+	ImGui::InputInt("Red team: ", (int *)&kte_settings.red_team, 0, 0);
+	ImGui::InputInt("Green team: ", (int *)&kte_settings.green_team, 0, 0);
+	ImGui::InputInt("Blue team: ", (int *)&kte_settings.blue_team, 0, 0);
 	ImGui::Separator();
 	if (ImGui::Button("Reset settings"))
 	{
@@ -724,7 +730,10 @@ void imgui_team_class_bars(const s_team_battle& team_combatants_to_disp)
 	ImGui::PushStyleColor(ImGuiCol_Text, color_array[0][4]);
 
 	char temp[32] = {0};
-	snprintf(temp, 32, " Struck %d/%d", total_hit, total);
+	if (kte_settings.bShortNames)
+		snprintf(temp, 32, " %d/%d", total_hit, total);
+	else
+		snprintf(temp, 32, " You hit %d/%d", total_hit, total);
 	draw_bar(1.f, temp, ImGui::GetStyleColorVec4(ImGuiCol_PlotHistogram));
 
 	uint16_t cur_max = combatants_to_disp[0].count;
@@ -744,20 +753,21 @@ void imgui_team_class_bars(const s_team_battle& team_combatants_to_disp)
 
 void push_new_team_name(char* buf, const uint16_t team_id)
 {
-	switch (team_id)
+	if (kte_settings.blue_team == team_id)
 	{
-	case 432:
-		snprintf(buf, 32, "Blue");
-		break;
-	case 2739:
-		snprintf(buf, 32, "Green");
-		break;
-	case 705:
-		snprintf(buf, 32, "Red");
-		break;
-	default:
-		snprintf(buf, 32, "Team %d", team_id);
-		break;
+		snprintf(buf, 32, " Blue");
+	}
+	else if (kte_settings.green_team == team_id)
+	{
+		snprintf(buf, 32, " Green");
+	}
+	else if (kte_settings.red_team == team_id)
+	{
+		snprintf(buf, 32, " Red");
+	}
+	else
+	{
+		snprintf(buf, 32, " Team %d", team_id);
 	}
 }
 
@@ -780,7 +790,8 @@ void draw_teams_tabbed()
 			}
 		}
 	}
-	if (ImGui::BeginTable("tabtable", 1, ImGuiTableFlags_BordersInner | ImGuiTableFlags_ContextMenuInBody))
+	if (ImGui::BeginTable("tabtable", 1, 
+		ImGuiTableFlags_BordersInner | ImGuiTableFlags_ContextMenuInBody | ImGuiTableFlags_NoPadOuterX))
 	{
 		ImGui::TableNextRow();
 		ImGui::TableSetColumnIndex(0);
@@ -819,7 +830,8 @@ void draw_teams_columns()
 	ImU32 col = ImGui::GetColorU32(ImGuiCol_Tab);
 	ImGui::PushStyleColor(ImGuiCol_TableHeaderBg, col);
 	mtx.lock();
-	if (ImGui::BeginTable("coltable", team_history_map.size(), ImGuiTableFlags_BordersInner | ImGuiTableFlags_ContextMenuInBody))
+	if (ImGui::BeginTable("coltable", team_history_map.size(), 
+		ImGuiTableFlags_BordersInner | ImGuiTableFlags_ContextMenuInBody | ImGuiTableFlags_NoPadOuterX))
 	{
 		char temp[32] = {0};
 		for (auto& team : team_history_map)

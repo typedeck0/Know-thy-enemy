@@ -399,6 +399,11 @@ struct s_team_battle {
 	std::array<s_profelite, DATA_ARRAY::LENGTH> profelites = std::array<s_profelite, DATA_ARRAY::LENGTH>();
 };
 
+struct custom_team {
+	unsigned int id = 0;
+	std::array<char, 16> name = {0};
+};
+
 std::mutex mtx;
 
 /* proto/globals */
@@ -413,6 +418,10 @@ struct settings {
 	unsigned int red_team = 705;
 	unsigned int green_team = 2739;
 	unsigned int blue_team = 432;
+	bool bIgnoreMapReq = false;
+	custom_team cteam1;
+	custom_team cteam2;
+	custom_team cteam3;
 };
 
 const uint8_t MAX_HISTORY_SIZE = 8; //power of 2
@@ -555,6 +564,8 @@ void record_agent(const ag* agent, const uint16_t instid, const bool iHit)
 
 bool isWvw()
 {
+	if (kte_settings.bIgnoreMapReq)
+		return true;
 	unsigned short map_id = (arccontext[0x701] << 8) | arccontext[0x700];
 	switch ((HackedMapIds)map_id)
 	{
@@ -625,9 +636,42 @@ uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const cha
 void options_end_proc(const char* windowname)
 {
 	ImGui::Checkbox("Know thy enemy##1cb", &kte_settings.bEnabled);
-	ImGui::InputInt("Red team##kte", (int *)&kte_settings.red_team, 0, 0);
-	ImGui::InputInt("Green team##kte", (int *)&kte_settings.green_team, 0, 0);
-	ImGui::InputInt("Blue team##kte", (int *)&kte_settings.blue_team, 0, 0);
+
+	ImGui::Text("Red team id:");
+	ImGui::SameLine();
+	ImGui::InputInt("##redteamid", (int *)&kte_settings.red_team, 0, 0);
+	ImGui::Text("Green team id:");
+	ImGui::SameLine();
+	ImGui::InputInt("##greenteamid", (int *)&kte_settings.green_team, 0, 0);
+	ImGui::Text("Blue team id:");
+	ImGui::SameLine();
+	ImGui::InputInt("##blueteamid", (int *)&kte_settings.blue_team, 0, 0);
+
+	ImGui::Text("Custom 1 name:");
+	ImGui::SameLine();
+	ImGui::InputText("##cteam1name", kte_settings.cteam1.name.data(), 16);
+	ImGui::SameLine();
+	ImGui::Text("id:");
+	ImGui::SameLine();
+	ImGui::InputInt("##cteam1id", (int *)&kte_settings.cteam1.id, 0, 0);
+
+	ImGui::Text("Custom 2 name:");
+	ImGui::SameLine();
+	ImGui::InputText("##cteam2name", kte_settings.cteam2.name.data(), 16);
+	ImGui::SameLine();
+	ImGui::Text("id:");
+	ImGui::SameLine();
+	ImGui::InputInt("##cteam2id", (int *)&kte_settings.cteam2.id, 0, 0);
+
+	ImGui::Text("Custom 3 name:");
+	ImGui::SameLine();
+	ImGui::InputText("##cteam3name", kte_settings.cteam3.name.data(), 16);
+	ImGui::SameLine();
+	ImGui::Text("id:");
+	ImGui::SameLine();
+	ImGui::InputInt("##cteam3id", (int *)&kte_settings.cteam3.id, 0, 0);
+
+	ImGui::NewLine();
 	ImGui::Separator();
 	if (ImGui::Button("Reset settings"))
 	{
@@ -715,6 +759,7 @@ void draw_style_menu()
 	ImGui::Checkbox("title bar background", &kte_settings.bTitleBg);
 	ImGui::Checkbox("use columns", &kte_settings.bShowColumns);
 	ImGui::Checkbox("use short names", &kte_settings.bShortNames);
+	ImGui::Checkbox("ignore map req.", &kte_settings.bIgnoreMapReq);
 }
 
 void imgui_team_class_bars(const s_team_battle& team_combatants_to_disp)
@@ -764,6 +809,18 @@ void push_new_team_name(char* buf, const uint16_t team_id)
 	else if (kte_settings.red_team == team_id)
 	{
 		snprintf(buf, 32, " Red");
+	}
+	else if (kte_settings.cteam1.id == team_id)
+	{
+		snprintf(buf, 32, kte_settings.cteam1.name.data());
+	}
+	else if (kte_settings.cteam2.id == team_id)
+	{
+		snprintf(buf, 32, kte_settings.cteam2.name.data());
+	}
+	else if (kte_settings.cteam3.id == team_id)
+	{
+		snprintf(buf, 32, kte_settings.cteam3.name.data());
 	}
 	else
 	{
@@ -939,7 +996,6 @@ void save_kte_settings()
 	file.close();
 }
 
-
 void init_kte_settings()
 {
 	std::wstring path = std::wstring(get_settings_path());
@@ -984,7 +1040,7 @@ arcdps_exports* mod_init() {
 	arc_exports.imguivers = IMGUI_VERSION_NUM;
 	arc_exports.size = sizeof(arcdps_exports);
 	arc_exports.out_name = "Know thy enemy";
-	arc_exports.out_build = "3.4";
+	arc_exports.out_build = "3.5";
 	arc_exports.imgui = imgui_proc;
 	arc_exports.wnd_nofilter = mod_wnd;
 	arc_exports.combat = mod_combat;

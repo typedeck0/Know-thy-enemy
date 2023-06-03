@@ -637,13 +637,13 @@ void options_end_proc(const char* windowname)
 {
 	ImGui::Checkbox("Know thy enemy##1cb", &kte_settings.bEnabled);
 
-	ImGui::Text("Red team id:");
+	ImGui::Text("Red team id:  ");
 	ImGui::SameLine();
 	ImGui::InputInt("##redteamid", (int *)&kte_settings.red_team, 0, 0);
 	ImGui::Text("Green team id:");
 	ImGui::SameLine();
 	ImGui::InputInt("##greenteamid", (int *)&kte_settings.green_team, 0, 0);
-	ImGui::Text("Blue team id:");
+	ImGui::Text("Blue team id: ");
 	ImGui::SameLine();
 	ImGui::InputInt("##blueteamid", (int *)&kte_settings.blue_team, 0, 0);
 

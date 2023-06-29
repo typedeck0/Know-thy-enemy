@@ -8,6 +8,7 @@
 #include <fstream>
 #include <array>
 #include <unordered_map>
+#include <atomic>
 
 /* combat state change */
 enum cbtstatechange {
@@ -448,7 +449,7 @@ uint64_t(*get_key_settings)();
 
 const char* arccontext = nullptr;
 
-std::unordered_map<uint16_t, bool> ids = std::unordered_map<uint16_t, bool>();
+std::unordered_map<uint32_t, bool> ids = std::unordered_map<uint32_t, bool>();
 std::unordered_map<uint16_t, std::array<s_team_battle, MAX_HISTORY_SIZE>> team_history_map = std::unordered_map<uint16_t, std::array<s_team_battle, MAX_HISTORY_SIZE>>();
 settings kte_settings;
 
@@ -534,7 +535,7 @@ uintptr_t mod_wnd(const HWND hWnd, const UINT uMsg, const WPARAM wParam, const L
 	return uMsg;
 }
 
-void record_agent(const ag* agent, const uint16_t instid, const bool iHit)
+void record_agent(const ag* agent, const uint32_t instid, const bool iHit)
 {
 	if (agent->team == 0)
 		return;
@@ -580,7 +581,7 @@ bool isWvw()
 	}
 }
 
-bool log_ended = false;
+std::atomic<bool> log_ended = false;
 
 /* combat callback -- may be called asynchronously, use id param to keep track of order, first event id will be 2. return ignored */
 /* at least one participant will be party/squad or minion of, or a buff applied by squad in the case of buff remove. not all statechanges present, see evtc statechange enum */
@@ -598,6 +599,7 @@ uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const cha
 		if (src && dst)
 		{
 			std::lock_guard<std::mutex>lock(mtx);
+			char buf[64] = {0};
 			if (log_ended && (src->name == nullptr || dst->name == nullptr))
 			{
 				cur_history_idx = (cur_history_idx + 1) & (MAX_HISTORY_SIZE - 1);
@@ -622,11 +624,11 @@ uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const cha
 
 			if (src->name == nullptr)
 			{
-				record_agent(src, ev->src_instid, 0);
+				record_agent(src, src->id, 0);
 			}
 			else if (dst->name == nullptr)
 			{
-				record_agent(dst, ev->dst_instid, src->self & 1);
+				record_agent(dst, dst->id, src->self & 1);
 			}
 		}
 	}
@@ -1040,7 +1042,7 @@ arcdps_exports* mod_init() {
 	arc_exports.imguivers = IMGUI_VERSION_NUM;
 	arc_exports.size = sizeof(arcdps_exports);
 	arc_exports.out_name = "Know thy enemy";
-	arc_exports.out_build = "3.5";
+	arc_exports.out_build = "3.6";
 	arc_exports.imgui = imgui_proc;
 	arc_exports.wnd_nofilter = mod_wnd;
 	arc_exports.combat = mod_combat;

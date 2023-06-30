@@ -1,4 +1,4 @@
-⚠️ WOOP ⚠️ WOOP ⚠️ ArcDps dev cucked the WvW API for Addons, so this is on hiatus till I reverse his code, Cheers ⚠️⚠️⚠️
+⚠️🚨⚠️🚨⚠️ ArcDps dev cucked the WvW API for Addons, so this is on hiatus till I reverse his code, Cheers ⚠️🚨⚠️🚨⚠️
 
 # Know-thy-enemy [WvW]
 [![](https://img.shields.io/github/downloads/typedeck0/know-thy-enemy/total?style=plastic)](../../releases)

@@ -46,6 +46,6 @@ Right click the window to toggle between a history of fights and the current ins
 
 post an [issue](../../issues)
 
-hmu in https://discord.gg/6xDbA64rZc
+hmu in this new discord https://discord.gg/6xDbA64rZc
 
 or in-game at woodel.6318

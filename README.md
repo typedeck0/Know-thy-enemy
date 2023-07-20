@@ -1,6 +1,4 @@
-~~⚠️🚨⚠️ ArcDps dev cucked the WvW API for Addons, so this is on hiatus till I reverse his code, Cheers ⚠️🚨⚠️~~
-
-✅✅ [July 1] I have a working version, closed source for now. ✅✅
+⚠️🚨⚠️ [July 19th] ArcDps dev cucked the WvW API for Addons **AGAIN***, so this is on hiatus till I reverse his code, Cheers ⚠️🚨⚠️
 
 # Know-thy-enemy [WvW]
 [![](https://img.shields.io/github/downloads/typedeck0/know-thy-enemy/total?style=plastic)](../../releases)

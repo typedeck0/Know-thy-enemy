@@ -1,4 +1,6 @@
-⚠️🚨🚨⚠️
+🙁🙁
+
+[July 21st] So basically the arcdev (I call them Humpty) made some changes to the arcdps API for WvW. These changes made by Humpty specifically remove agent instance IDs and their generic IDs from the API. The changes replaced the values with 0xFFFF and profession ID, respectfully. In order to circumvent the Humpty changes it is going to require some time, maybe a couple of weeks due to only having some free time on the weekends. Until then I can only suggest using an arcdps log parser that can count enemy combatants, do note large fights will cause significant lag when the log is written, will take up some space on your harddrive, will require tabbing out of the game, and are only shown after the log period has ended.
 
 [July 19th] ArcDps dev cucked the WvW API for Addons **AGAIN**, so this is on hiatus till I reverse his code, Cheers
 

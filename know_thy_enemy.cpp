@@ -622,6 +622,8 @@ uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const cha
 				override_tab_max_switch = false;
 			}
 
+			//DO MAGIC
+			
 			if (src->name == nullptr)
 			{
 				record_agent(src, src->id, 0);

@@ -1,6 +1,6 @@
  [Know thy enemy discord](https://discord.gg/6xDbA64rZc) for update notifications and chat.
 
-Pre-Relases are operational, still testing so not going to release. Cheers.
+Pre-Relases are operational, still testing so not going to full release yet. Cheers.
 
 ![](https://thumbs.gfycat.com/WarmPastIrishwolfhound-size_restricted.gif)
 

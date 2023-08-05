@@ -21,8 +21,8 @@ enum cbtstatechange {
 	CBTS_SPAWN, // src_agent is now in game tracking range (not in realtime api)
 	CBTS_DESPAWN, // src_agent is no longer being tracked (not in realtime api)
 	CBTS_HEALTHUPDATE, // src_agent is at health percent. dst_agent = percent * 10000 (eg. 99.5% will be 9950) (not in realtime api)
-	CBTS_LOGSTART, // log start. value = server unix timestamp **uint32**. buff_dmg = local unix timestamp. src_agent = 0x637261 (arcdps id) if evtc, species id if realtime
-	CBTS_LOGEND, // log end. value = server unix timestamp **uint32**. buff_dmg = local unix timestamp. src_agent = 0x637261 (arcdps id) if evtc, species id if realtime
+	CBTS_LOGSTART, // log start. value = server unix timestamp **uint32**. buff_dmg = local unix timestamp
+	CBTS_LOGEND, // log end. value = server unix timestamp **uint32**. buff_dmg = local unix timestamp
 	CBTS_WEAPSWAP, // src_agent swapped weapon set. dst_agent = current set id (0/1 water, 4/5 land)
 	CBTS_MAXHEALTHUPDATE, // src_agent has had it's maximum health changed. dst_agent = new max health (not in realtime api)
 	CBTS_POINTOFVIEW, // src_agent is agent of "recording" player  (not in realtime api)
@@ -57,8 +57,13 @@ enum cbtstatechange {
 	CBTS_INSTANCESTART, // src_agent is ms time at which the instance likely was started
 	CBTS_TICKRATE, // every 500ms, src_agent = 25 - tickrate (when tickrate < 21)
 	CBTS_LAST90BEFOREDOWN, // src_agent is enemy agent that went down, dst_agent is time in ms since last 90% (for downs contribution)
-	CBTS_EFFECT, // src_agent is owner. dst_agent if at agent, else &value = float[3] xyz, &iff = float[2] xy orient, &pad61 = float[1] z orient, skillid = effectid. if is_flanking: duration = trackingid. &is_shields = uint16 duration. if effectid = 0, end &is_shields = trackingid (not in realtime api)
+	CBTS_EFFECT, // retired, not used since 230716+
 	CBTS_IDTOGUID, // &src_agent = 16byte persistent content guid, overstack_value is of contentlocal enum, skillid is content id  (not in realtime api)
+	CBTS_LOGNPCUPDATE, // log npc update. value = server unix timestamp **uint32**. buff_dmg = local unix timestamp. src_agent = species id. dst_agent = agent, flanking = is gadget
+	CBTS_IDLEEVENT, // internal use, won't see anywhere
+	CBTS_EXTENSIONCOMBAT, // cbtevent with statechange byte set to this, treats skillid as skill for evtc skill table
+	CBTS_FRACTALSCALE, // src_agent = fractal scale
+	CBTS_EFFECT2, // src_agent is owner. dst_agent if at agent, else &value = float[3] xyz. &iff = uint32 duraation. &buffremove = uint32 trackable id. &is_shields = int16[3] orientation, values are original*1000 clamped to int16 (not in realtime api)
 	CBTS_UNKNOWN
 };
 
@@ -394,6 +399,18 @@ struct s_profelite {
 	}
 };
 
+enum combat_state {
+	IN_BATTLE,
+	OUT_BATTLE,
+};
+
+enum display_state {
+	BATTLE,
+	HISTORY_TAB,
+	HISTORY_COL,
+	NONE,
+};
+
 struct s_team_battle {
 	uint8_t total = 0;
 	uint8_t total_hit = 0;
@@ -442,7 +459,7 @@ extern "C" __declspec(dllexport) void* get_release_addr();
 /* arcdps exports */
 size_t(*arclog)(char*);
 void(*arccolors)(ImVec4**);
-const char*(*arccontext_0x510)();
+const char*(*arccontext_0x508)();
 wchar_t*(*get_settings_path)();
 uint64_t(*get_ui_settings)();
 uint64_t(*get_key_settings)();
@@ -535,39 +552,13 @@ uintptr_t mod_wnd(const HWND hWnd, const UINT uMsg, const WPARAM wParam, const L
 	return uMsg;
 }
 
-void record_agent(const ag* agent, const uint32_t instid, const bool iHit)
-{
-	if (agent->team == 0)
-		return;
-
-	auto& team = team_history_map[agent->team];
-
-	if (ids.find(instid) != ids.end()) //if found
-	{
-		team[cur_history_idx].total_hit += (iHit && !(ids[instid]));
-		ids[instid] = (iHit && !(ids[instid])) || ids[instid];
-		return; //dont process found
-	}
-	ids[instid] = iHit;
-	team[cur_history_idx].total_hit += ids[instid];
-
-	s_profelite pe(agent->prof & 0xFF, agent->elite & 0xFF);
-
-	if (team[cur_history_idx].profelites[pe.idx].prof == 0)
-	{
-		team[cur_history_idx].profelites[pe.idx] = pe;
-	}
-		
-	team[cur_history_idx].profelites[pe.idx].count++;
-	team[cur_history_idx].total++;
-	return;
-}
-
 bool isWvw()
 {
 	if (kte_settings.bIgnoreMapReq)
-		return true;
-	unsigned short map_id = (arccontext[0x701] << 8) | arccontext[0x700];
+		return kte_settings.bIgnoreMapReq = false;
+	if (arccontext == nullptr)
+		return false;
+	unsigned short map_id = (arccontext[0x6F9] << 8) | arccontext[0x6F8];
 	switch ((HackedMapIds)map_id)
 	{
 	case HackedMapIds::WVW_BBL:
@@ -581,27 +572,64 @@ bool isWvw()
 	}
 }
 
-std::atomic<bool> log_ended = false;
+unsigned int logstart_time = 0xFFFFFFFF;
+unsigned int last_cbt_evt = 0;
+unsigned long long log_end_id = 0;
+combat_state cmb_state = combat_state::OUT_BATTLE;
+bool log_start = false;
 
 /* combat callback -- may be called asynchronously, use id param to keep track of order, first event id will be 2. return ignored */
 /* at least one participant will be party/squad or minion of, or a buff applied by squad in the case of buff remove. not all statechanges present, see evtc statechange enum */
 uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const char* skillname, const uint64_t id, const uint64_t revision) 
 {
-	if (!ev && !src->elite && src->prof && dst->self) // we added ourselves, get outplayed fool
+	if (!ev)
 	{
-		kte_settings.bToShow = isWvw();
+		if (!src->elite)
+		{
+			if(src->prof) //add
+			{
+				if(dst->self)
+				{
+					// char buf[64] = {0};
+					// snprintf(buf, 64, "%llx|%llx", src->id, dst->id);
+					// log_arc(buf);
+					kte_settings.bToShow = isWvw();
+				}
+			}
+		}
 	}
 	else if(ev && kte_settings.bEnabled && kte_settings.bToShow)
 	{
-		log_ended = (team_history_map.size() != 0 && ev->is_statechange == CBTS_LOGEND) || log_ended;
+		if (ev->is_statechange == CBTS_LOGSTART)
+		{
+			logstart_time = GetTickCount();
+			log_end_id = 1;
+			log_start = true;
+		}
+		else if (ev->is_statechange == CBTS_LOGEND)
+		{
+			cmb_state = combat_state::OUT_BATTLE;
+			log_end_id = id;
+			log_start = false;
+		}
 		if (ev->is_activation || ev->is_buffremove || ev->is_statechange || ev->buff || src->elite == 0xFFFFFFFF || dst->elite == 0xFFFFFFFF || src->prof == 0 || dst->prof == 0)
 			return 0;
-		if (src && dst)
+		if (src && dst && ev->value != 0 && id > log_end_id)
 		{
 			std::lock_guard<std::mutex>lock(mtx);
-			char buf[64] = {0};
-			if (log_ended && (src->name == nullptr || dst->name == nullptr))
+			if (log_start)
+				cmb_state = combat_state::IN_BATTLE;
+			if (GetTickCount() - last_cbt_evt < 200)
+				return 0;
+
+			last_cbt_evt = GetTickCount();
+
+			bool all_zero = true;
+			for (auto& team : team_history_map)
+				all_zero = all_zero && team.second[cur_history_idx].total == 0;
+			if (log_end_id == 1 && !all_zero)
 			{
+				log_end_id = 0;
 				cur_history_idx = (cur_history_idx + 1) & (MAX_HISTORY_SIZE - 1);
 				for (auto& team : team_history_map)
 				{
@@ -614,24 +642,14 @@ uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const cha
 							profelite.count = 0;
 						}
 					}
-					ids.clear();
-					history_to_disp_idx = cur_history_idx;
-					history_radio_state = 0;
 				}
-				log_ended = false;
+				history_to_disp_idx = cur_history_idx;
+				history_radio_state = 0;
+				ids.clear();
 				override_tab_max_switch = false;
 			}
 
-			//DO MAGIC
-			
-			if (src->name == nullptr)
-			{
-				record_agent(src, src->id, 0);
-			}
-			else if (dst->name == nullptr)
-			{
-				record_agent(dst, dst->id, src->self & 1);
-			}
+			// DO MAGIC HERE
 		}
 	}
 	return 0;
@@ -706,8 +724,19 @@ void draw_bar(const float frac, const char* text, const ImVec4& color)
 
 	ImVec2 text_start = ImGui::GetCursorPos();
 	text_start.y += 1; //middle of bar
+	float inner_pad = 5; // (ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(text).x) * 0.5;
+	text_start.x += inner_pad;
+	ImVec2 text_shadow = text_start;
+	text_shadow.x += 1;
+	text_shadow.y += 1;
+	ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0,0,0,.6));
+	ImGui::SetCursorPos(text_shadow);
+	ImGui::TextUnformatted(text, text + strlen(text));
+	ImGui::PopStyleColor();
+
 	ImGui::SetCursorPos(text_start);
 	ImGui::TextUnformatted(text, text + strlen(text));
+	text_start.x -= inner_pad;
 
 	text_start.y += ImGui::GetTextLineHeight() + 3; //end of bar + 2 pad
 	ImGui::SetCursorPos(text_start);
@@ -763,11 +792,19 @@ void draw_style_menu()
 	ImGui::Checkbox("title bar background", &kte_settings.bTitleBg);
 	ImGui::Checkbox("use columns", &kte_settings.bShowColumns);
 	ImGui::Checkbox("use short names", &kte_settings.bShortNames);
-	ImGui::Checkbox("ignore map req.", &kte_settings.bIgnoreMapReq);
+	// ImGui::Checkbox("ignore map req.", &kte_settings.bIgnoreMapReq);
 }
 
 void imgui_team_class_bars(const s_team_battle& team_combatants_to_disp)
 {
+	if (team_combatants_to_disp.total == 0)
+	{
+		if (kte_settings.bShortNames)
+			draw_bar(1.f, "00 Tot", ImGui::GetStyleColorVec4(ImGuiCol_PlotHistogram));
+		else
+			draw_bar(1.f, "00 Total", ImGui::GetStyleColorVec4(ImGuiCol_PlotHistogram));
+		return;
+	}
 	std::array<s_profelite, DATA_ARRAY::LENGTH> combatants_to_disp = team_combatants_to_disp.profelites;
 	uint8_t total = team_combatants_to_disp.total;
 	uint8_t total_hit = team_combatants_to_disp.total_hit;
@@ -780,9 +817,9 @@ void imgui_team_class_bars(const s_team_battle& team_combatants_to_disp)
 
 	char temp[32] = {0};
 	if (kte_settings.bShortNames)
-		snprintf(temp, 32, " %d/%d", total_hit, total);
+		snprintf(temp, 32, "%02d Tot", total);
 	else
-		snprintf(temp, 32, " You hit %d/%d", total_hit, total);
+		snprintf(temp, 32, "%02d Total", total);
 	draw_bar(1.f, temp, ImGui::GetStyleColorVec4(ImGuiCol_PlotHistogram));
 
 	uint16_t cur_max = combatants_to_disp[0].count;
@@ -791,9 +828,9 @@ void imgui_team_class_bars(const s_team_battle& team_combatants_to_disp)
 		if (profelite.count == 0) //shortstop
 			break;
 		if (kte_settings.bShortNames)
-			snprintf(temp, 32, " %d %s", profelite.count, &pe_short_name_lut[profelite.idx]);
+			snprintf(temp, 32, "%02d %s", profelite.count, &pe_short_name_lut[profelite.idx]);
 		else
-			snprintf(temp, 32, " %d %s", profelite.count, &pe_name_lut[profelite.idx]);
+			snprintf(temp, 32, "%02d %s", profelite.count, &pe_name_lut[profelite.idx]);
 		draw_bar((float)profelite.count/(float)cur_max, temp, color_array[1][profelite.prof]);
 	}
 
@@ -804,31 +841,31 @@ void push_new_team_name(char* buf, const uint16_t team_id)
 {
 	if (kte_settings.blue_team == team_id)
 	{
-		snprintf(buf, 32, " Blue");
+		snprintf(buf, 32, "Blue");
 	}
 	else if (kte_settings.green_team == team_id)
 	{
-		snprintf(buf, 32, " Green");
+		snprintf(buf, 32, "Green");
 	}
 	else if (kte_settings.red_team == team_id)
 	{
-		snprintf(buf, 32, " Red");
+		snprintf(buf, 32, "Red");
 	}
 	else if (kte_settings.cteam1.id == team_id)
 	{
-		snprintf(buf, 32, kte_settings.cteam1.name.data());
+		snprintf(buf, 16, kte_settings.cteam1.name.data());
 	}
 	else if (kte_settings.cteam2.id == team_id)
 	{
-		snprintf(buf, 32, kte_settings.cteam2.name.data());
+		snprintf(buf, 16, kte_settings.cteam2.name.data());
 	}
 	else if (kte_settings.cteam3.id == team_id)
 	{
-		snprintf(buf, 32, kte_settings.cteam3.name.data());
+		snprintf(buf, 16, kte_settings.cteam3.name.data());
 	}
 	else
 	{
-		snprintf(buf, 32, " Team %d", team_id);
+		snprintf(buf, 32, "Team %d", team_id);
 	}
 }
 
@@ -838,7 +875,6 @@ void draw_teams_tabbed()
 	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, 1));
 	ImU32 col = ImGui::GetColorU32(ImGuiCol_TableRowBg);
 	ImGui::PushStyleColor(ImGuiCol_TableHeaderBg, col);
-	mtx.lock();
 	uint8_t cur_max = 0;
 	if (override_tab_max_switch == false)
 	{
@@ -879,7 +915,6 @@ void draw_teams_tabbed()
 		imgui_team_class_bars(team_history_map[tab_teamid][history_to_disp_idx]);
 		ImGui::EndTable();
 	}
-	mtx.unlock();
 	ImGui::PopStyleColor();
 	ImGui::PopStyleVar();
 }
@@ -890,7 +925,6 @@ void draw_teams_columns()
 	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, 1));
 	ImU32 col = ImGui::GetColorU32(ImGuiCol_Tab);
 	ImGui::PushStyleColor(ImGuiCol_TableHeaderBg, col);
-	mtx.lock();
 	if (ImGui::BeginTable("coltable", team_history_map.size(), 
 		ImGuiTableFlags_BordersInner | ImGuiTableFlags_ContextMenuInBody | ImGuiTableFlags_NoPadOuterX))
 	{
@@ -906,6 +940,8 @@ void draw_teams_columns()
 		{
 			ImGui::TableSetColumnIndex(column);
 			const char* column_name = ImGui::TableGetColumnName(column); // Retrieve name passed to TableSetupColumn()
+			float inner_pad = ImGui::GetColumnWidth(column)*0.5 - ImGui::CalcTextSize(column_name).x*0.5;
+			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + inner_pad);
 			ImGui::Text(column_name);
 			column++;
 		}
@@ -920,9 +956,70 @@ void draw_teams_columns()
 		}
 		ImGui::EndTable();
 	}
-	mtx.unlock();
 	ImGui::PopStyleColor();
 	ImGui::PopStyleVar();
+}
+
+void draw_battle_wait()
+{
+	if (GetTickCount() - last_cbt_evt > 15*1000)
+	{
+		cmb_state = combat_state::OUT_BATTLE;
+	}
+	ImGui::NewLine();
+	const char* text = "BATTLE IN PROGRESS";
+	float inner_pad;
+	unsigned int width = ImGui::CalcTextSize(text).x + 4;
+	unsigned int win_width = ImGui::GetWindowWidth();
+	if (width >= win_width)
+	{
+		const char* text0 = "BATTLE";
+		inner_pad = win_width*0.5 - ImGui::CalcTextSize(text0).x*0.5;
+		ImGui::SetCursorPosX(inner_pad);
+		ImGui::Text(text0);
+
+		const char* text1 = "IN";
+		inner_pad = win_width*0.5 - ImGui::CalcTextSize(text1).x*0.5;
+		ImGui::SetCursorPosX(inner_pad);
+		ImGui::Text(text1);
+
+		const char* text2 = "PROGRESS";
+		inner_pad = win_width*0.5 - ImGui::CalcTextSize(text2).x*0.5;
+		ImGui::SetCursorPosX(inner_pad);
+		ImGui::Text(text2);
+
+	}
+	else
+	{
+		inner_pad = win_width*0.5 - ImGui::CalcTextSize(text).x*0.5;
+		ImGui::SetCursorPosX(inner_pad);
+		ImGui::Text(text);
+	}
+	ImGui::NewLine();
+	inner_pad = win_width*0.5 - ImGui::CalcTextSize("00000000").x*0.5;
+	ImGui::SetCursorPosX(inner_pad);
+	ImGui::Text("%08o", GetTickCount() - logstart_time);
+}
+
+display_state get_display_state()
+{
+	if (team_history_map.empty())
+	{
+		return display_state::NONE;
+	}
+	if (cmb_state == combat_state::IN_BATTLE && cur_history_idx == history_to_disp_idx)
+	{
+		return display_state::BATTLE;
+	}
+	else if (!kte_settings.bShowColumns)
+	{
+		return display_state::HISTORY_TAB;
+	}
+	else if (kte_settings.bShowColumns)
+	{
+		return display_state::HISTORY_COL;
+	}
+	return display_state::NONE;
 }
 
 uintptr_t imgui_proc(const uint32_t not_charsel_or_loading, const uint32_t hide_if_combat_or_ooc)
@@ -943,19 +1040,23 @@ uintptr_t imgui_proc(const uint32_t not_charsel_or_loading, const uint32_t hide_
 		ImGui::PushID("KTE");
 		if (ImGui::Begin("Know thy enemy", &kte_settings.bEnabled, kte_settings.wFlags))
 		{
-			if (!team_history_map.empty() && !kte_settings.bShowColumns)
+			switch (get_display_state())
 			{
+			case display_state::BATTLE:
+				draw_battle_wait();
+				break;
+			case display_state::HISTORY_TAB:
 				draw_teams_tabbed();
-			}
-			else if (!team_history_map.empty() && kte_settings.bShowColumns)
-			{
+				break;
+			case display_state::HISTORY_COL:
 				draw_teams_columns();
-			}
-			else
-			{
+				break;
+			case display_state::NONE:
+			default:
 				ImGui::Text("No teams");
 				ImGui::Separator();
 				ImGui::Text("No hits");
+				break;
 			}
 
 			if(ImGui::BeginPopupContextWindow(NULL, ImGuiPopupFlags_MouseButtonRight))
@@ -1044,7 +1145,7 @@ arcdps_exports* mod_init() {
 	arc_exports.imguivers = IMGUI_VERSION_NUM;
 	arc_exports.size = sizeof(arcdps_exports);
 	arc_exports.out_name = "Know thy enemy";
-	arc_exports.out_build = "3.6";
+	arc_exports.out_build = "4.4";
 	arc_exports.imgui = imgui_proc;
 	arc_exports.wnd_nofilter = mod_wnd;
 	arc_exports.combat = mod_combat;
@@ -1063,8 +1164,8 @@ extern "C" __declspec(dllexport) void* get_init_addr(char* arcversion, ImGuiCont
 	// id3dptr is IDirect3D9* if d3dversion==9, or IDXGISwapChain* if d3dversion==11
 	arcvers = arcversion;
 	get_settings_path = (wchar_t*(*)())GetProcAddress((HMODULE)arcdll, "e0");
-	arccontext_0x510 = (const char*(*)())GetProcAddress((HMODULE)arcdll, "e1");
-	arccontext = arccontext_0x510()-0x510;
+	arccontext_0x508 = (const char*(*)())GetProcAddress((HMODULE)arcdll, "e1");
+	arccontext = arccontext_0x508()-0x508;
 	arclog = (size_t(*)(char*))GetProcAddress((HMODULE)arcdll, "e8");
 	arccolors = (void(*)(ImVec4**))GetProcAddress((HMODULE)arcdll, "e5");
 	get_ui_settings = (uint64_t(*)())GetProcAddress((HMODULE)arcdll, "e6");

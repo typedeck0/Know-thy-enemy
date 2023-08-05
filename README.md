@@ -1,8 +1,6 @@
  [Know thy enemy discord](https://discord.gg/6xDbA64rZc) for update notifications and chat.
 
-Pre-Relases are operational, still testing so not going to full release yet. Cheers.
-
-![](https://thumbs.gfycat.com/WarmPastIrishwolfhound-size_restricted.gif)
+![](https://i.giphy.com/GcO6KBd1C16F2.gif)
 
 # Know-thy-enemy [WvW]
 [![](https://img.shields.io/github/downloads/typedeck0/know-thy-enemy/total?style=plastic)](../../releases)

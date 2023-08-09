@@ -9,6 +9,7 @@
 #include <array>
 #include <unordered_map>
 #include <atomic>
+#include <time.h>
 
 /* combat state change */
 enum cbtstatechange {
@@ -436,7 +437,7 @@ struct settings {
 	unsigned int red_team = 705;
 	unsigned int green_team = 2739;
 	unsigned int blue_team = 432;
-	bool bIgnoreMapReq = false;
+	bool bHideInCombat = false;
 	custom_team cteam1;
 	custom_team cteam2;
 	custom_team cteam3;
@@ -468,6 +469,8 @@ const char* arccontext = nullptr;
 
 std::unordered_map<uint32_t, bool> ids = std::unordered_map<uint32_t, bool>();
 std::unordered_map<uint16_t, std::array<s_team_battle, MAX_HISTORY_SIZE>> team_history_map = std::unordered_map<uint16_t, std::array<s_team_battle, MAX_HISTORY_SIZE>>();
+std::array<std::array<char, 32>, MAX_HISTORY_SIZE> history_labels;
+
 settings kte_settings;
 
 int history_radio_state = 0;
@@ -554,8 +557,6 @@ uintptr_t mod_wnd(const HWND hWnd, const UINT uMsg, const WPARAM wParam, const L
 
 bool isWvw()
 {
-	if (kte_settings.bIgnoreMapReq)
-		return kte_settings.bIgnoreMapReq = false;
 	if (arccontext == nullptr)
 		return false;
 	unsigned short map_id = (arccontext[0x6F9] << 8) | arccontext[0x6F8];
@@ -608,6 +609,8 @@ uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const cha
 		}
 		else if (ev->is_statechange == CBTS_LOGEND)
 		{
+			_strtime_s(&history_labels[cur_history_idx][0], 32);
+			snprintf(&history_labels[cur_history_idx][8], 32-9, " (%ds)", (GetTickCount() - logstart_time)/1000);
 			cmb_state = combat_state::OUT_BATTLE;
 			log_end_id = id;
 			log_start = false;
@@ -649,7 +652,8 @@ uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const cha
 				override_tab_max_switch = false;
 			}
 
-			// DO MAGIC HERE
+			//DO MAGIC
+
 		}
 	}
 	return 0;
@@ -759,9 +763,7 @@ void draw_history_menu()
 		int past_history_idx = (cur_history_idx - 1 + MAX_HISTORY_SIZE) & (MAX_HISTORY_SIZE - 1);
 		for(int i = 0; i < MAX_HISTORY_SIZE-1; i++)
 		{
-			char temp[32] = {0};
-			snprintf(temp, 32, "History %d", i+1);
-			if(ImGui::RadioButton(temp, history_radio_state == (i+1)))
+			if(ImGui::RadioButton(&history_labels[past_history_idx][0], history_radio_state == (i+1)))
 			{
 				history_radio_state = i+1;
 				history_to_disp_idx = past_history_idx;
@@ -792,7 +794,7 @@ void draw_style_menu()
 	ImGui::Checkbox("title bar background", &kte_settings.bTitleBg);
 	ImGui::Checkbox("use columns", &kte_settings.bShowColumns);
 	ImGui::Checkbox("use short names", &kte_settings.bShortNames);
-	// ImGui::Checkbox("ignore map req.", &kte_settings.bIgnoreMapReq);
+	ImGui::Checkbox("hide while in combat", &kte_settings.bHideInCombat);
 }
 
 void imgui_team_class_bars(const s_team_battle& team_combatants_to_disp)
@@ -1024,7 +1026,8 @@ display_state get_display_state()
 
 uintptr_t imgui_proc(const uint32_t not_charsel_or_loading, const uint32_t hide_if_combat_or_ooc)
 {
-	if (not_charsel_or_loading && kte_settings.bEnabled && kte_settings.bToShow)
+	if (not_charsel_or_loading && kte_settings.bEnabled && kte_settings.bToShow && 
+		(!kte_settings.bHideInCombat || cmb_state == combat_state::OUT_BATTLE))
 	{
 		bool made_title_invis = false;
 		if (!kte_settings.bTitleBg)
@@ -1145,7 +1148,7 @@ arcdps_exports* mod_init() {
 	arc_exports.imguivers = IMGUI_VERSION_NUM;
 	arc_exports.size = sizeof(arcdps_exports);
 	arc_exports.out_name = "Know thy enemy";
-	arc_exports.out_build = "4.4";
+	arc_exports.out_build = "4.5";
 	arc_exports.imgui = imgui_proc;
 	arc_exports.wnd_nofilter = mod_wnd;
 	arc_exports.combat = mod_combat;

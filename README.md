@@ -1,6 +1,8 @@
  [Know thy enemy discord](https://discord.gg/6xDbA64rZc) for update notifications and chat.
 
-![](https://i.giphy.com/GcO6KBd1C16F2.gif)
+> Know thy enemy and know thyself, and need not fear the result of a hundred battles.
+> 
+> \- Sun Tzu
 
 # Know-thy-enemy [WvW]
 [![](https://img.shields.io/github/downloads/typedeck0/know-thy-enemy/total?style=plastic)](../../releases)

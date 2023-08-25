@@ -4,6 +4,8 @@
 > 
 > \- Sun Tzu
 
+Some parts of the binary are closed source, since it is related to arcdps/GW2 internals.
+
 # Know-thy-enemy [WvW]
 [![](https://img.shields.io/github/downloads/typedeck0/know-thy-enemy/total?style=plastic)](../../releases)
 

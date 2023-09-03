@@ -472,7 +472,9 @@ struct ArcContext
 		AgentDataList* agentDataList;
 	};
 	AgentManager* agentManager;
-	unsigned char pad[0x628-sizeof(AgentManager*)];
+	unsigned char pad0[0x4d0-sizeof(AgentManager*)];
+	char* gw2_data;
+	unsigned char pad1[0x628-0x4d0-sizeof(AgentManager*)];
 	short map_id;
 };
 
@@ -720,7 +722,9 @@ uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const cha
 					if (!isFoe)
 						continue;
 					unsigned short instid = *(unsigned short*)(cur_agent + 0x85c);
-					unsigned short team_id = *(unsigned short*)(cur_agent + 0x878); //-4
+					unsigned short team_id = 0;
+					if (arccontext->gw2_data != 0 && *(unsigned long long*)(cur_agent + 0x88) != 0)
+						team_id = *(unsigned short *)(arccontext->gw2_data + *(unsigned long long*)(cur_agent + 0x88) + 0x128);
 					unsigned short prof = *(unsigned short*)(cur_agent + 0x87c); //0
 					unsigned short elite = *(unsigned short*)(cur_agent + 0x87e); //2
 					if (team_id == 0 || team_id == 0xFFFF)
@@ -1249,7 +1253,7 @@ arcdps_exports* mod_init() {
 	arc_exports.imguivers = IMGUI_VERSION_NUM;
 	arc_exports.size = sizeof(arcdps_exports);
 	arc_exports.out_name = "Know thy enemy";
-	arc_exports.out_build = "4.6.3";
+	arc_exports.out_build = "4.6.4";
 	arc_exports.imgui = imgui_proc;
 	arc_exports.wnd_nofilter = mod_wnd;
 	arc_exports.combat = mod_combat;

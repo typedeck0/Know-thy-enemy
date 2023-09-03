@@ -443,6 +443,41 @@ struct settings {
 	custom_team cteam3;
 };
 
+struct ArcContext 
+{
+	struct AgentManager 
+	{
+		struct AgentDataList 
+		{
+			struct AgentBlock 
+			{
+				AgentDataList* agentDataList;
+				AgentBlock* prev;
+				AgentBlock* next;
+				unsigned char* agent;
+				void* flags;
+				void* p0;
+				void* p1;
+				unsigned short length;
+				unsigned short cur_i;
+				unsigned short dataSize;
+			};
+			ArcContext* arcContext;
+			AgentBlock* tail;
+			AgentBlock* head;
+		};
+		ArcContext* arcContext;
+		void* p0;
+		void* p1;
+		AgentDataList* agentDataList;
+	};
+	AgentManager* agentManager;
+	unsigned char pad0[0x4d0-sizeof(AgentManager*)];
+	char* gw2_data;
+	unsigned char pad1[0x628-0x4d0-sizeof(AgentManager*)];
+	short map_id;
+};
+
 const uint8_t MAX_HISTORY_SIZE = 8; //power of 2
 const uint8_t MAX_STRING_SIZE = 32;
 const uint8_t MAX_TOTAL_STRINGS = 64;
@@ -465,7 +500,7 @@ wchar_t*(*get_settings_path)();
 uint64_t(*get_ui_settings)();
 uint64_t(*get_key_settings)();
 
-const char* arccontext = nullptr;
+ArcContext* arccontext = nullptr;
 
 std::unordered_map<uint32_t, bool> ids = std::unordered_map<uint32_t, bool>();
 std::unordered_map<uint16_t, std::array<s_team_battle, MAX_HISTORY_SIZE>> team_history_map = std::unordered_map<uint16_t, std::array<s_team_battle, MAX_HISTORY_SIZE>>();
@@ -559,8 +594,7 @@ bool isWvw()
 {
 	if (arccontext == nullptr)
 		return false;
-	unsigned short map_id = (arccontext[0x6F9] << 8) | arccontext[0x6F8];
-	switch ((HackedMapIds)map_id)
+	switch ((HackedMapIds)arccontext->map_id)
 	{
 	case HackedMapIds::WVW_BBL:
 	case HackedMapIds::WVW_EBG:
@@ -583,6 +617,7 @@ bool log_start = false;
 /* at least one participant will be party/squad or minion of, or a buff applied by squad in the case of buff remove. not all statechanges present, see evtc statechange enum */
 uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const char* skillname, const uint64_t id, const uint64_t revision) 
 {
+	// Get arccontext
 	if (!ev)
 	{
 		if (!src->elite)
@@ -652,7 +687,7 @@ uintptr_t mod_combat(const cbtevent* ev, const ag* src, const ag* dst, const cha
 				override_tab_max_switch = false;
 			}
 
-			//DO MAGIC
+			// Parse out combat agents
 
 		}
 	}
@@ -1142,13 +1177,18 @@ extern "C" __declspec(dllexport) void* get_release_addr() {
 /* initialize mod -- return table that arcdps will use for callbacks. exports struct and strings are copied to arcdps memory only once at init */
 static arcdps_exports arc_exports = {0};
 arcdps_exports* mod_init() {
+	// if (strcmp(arcvers, "20230822.225438-493-x64") != 0)
+	// {
+	// 	log_arc("arcdps mismatch, not loading know_thy_enemy");
+	// 	return 0;
+	// }
 	/* for arcdps */
 	memset(&arc_exports, 0, sizeof(arcdps_exports));
 	arc_exports.sig = 0xC0FFEE;
 	arc_exports.imguivers = IMGUI_VERSION_NUM;
 	arc_exports.size = sizeof(arcdps_exports);
 	arc_exports.out_name = "Know thy enemy";
-	arc_exports.out_build = "4.5";
+	arc_exports.out_build = "4.6.4";
 	arc_exports.imgui = imgui_proc;
 	arc_exports.wnd_nofilter = mod_wnd;
 	arc_exports.combat = mod_combat;
@@ -1167,8 +1207,8 @@ extern "C" __declspec(dllexport) void* get_init_addr(char* arcversion, ImGuiCont
 	// id3dptr is IDirect3D9* if d3dversion==9, or IDXGISwapChain* if d3dversion==11
 	arcvers = arcversion;
 	get_settings_path = (wchar_t*(*)())GetProcAddress((HMODULE)arcdll, "e0");
-	arccontext_0x508 = (const char*(*)())GetProcAddress((HMODULE)arcdll, "e1");
-	arccontext = arccontext_0x508()-0x508;
+	// arccontext_0x508 = (const char*(*)())GetProcAddress((HMODULE)arcdll, "e1");
+	// arccontext = arccontext_0x508()-0x508;
 	arclog = (size_t(*)(char*))GetProcAddress((HMODULE)arcdll, "e8");
 	arccolors = (void(*)(ImVec4**))GetProcAddress((HMODULE)arcdll, "e5");
 	get_ui_settings = (uint64_t(*)())GetProcAddress((HMODULE)arcdll, "e6");

@@ -23,7 +23,7 @@ Columns and small names options.
 
 ![image](https://user-images.githubusercontent.com/113395677/229323981-305f5725-00c3-439d-a431-a8ee919c032b.png)
 
-~~## Build~~
+## ~~Build~~
 ~~Clone. Download [ImGui 1.8](https://github.com/ocornut/imgui/tree/v1.80). Extract the Imgui to the cloned directory. Run the bat file. The DLL will be in the out directory.~~
 ~~Due to some parts being closed source the resulting DLL will not work correctly.~~
 
